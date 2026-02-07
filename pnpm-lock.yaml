@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@fugood/whisper.node':
+        specifier: ^1.0.15
+        version: 1.0.15
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -323,6 +326,75 @@ packages:
 
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
+
+  '@fugood/node-whisper-darwin-arm64@1.0.15':
+    resolution: {integrity: sha512-Yh1kNGnc2MROqzSJastNlKBclEchTvT3QUICLovNpf9AeJoJ1NcpwCMb7oviTHXJnMw+K7+E7KJom1CCP+4SDw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@fugood/node-whisper-darwin-x64@1.0.15':
+    resolution: {integrity: sha512-R/6w8UZd5VxSN+jstRVrQSs1gOmOrVeV0dDwg7YXuhIwPY0yvu+qsN9dSXah1E8GakORm8iNiSrSPhTxbpAE1A==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@fugood/node-whisper-linux-arm64-cuda@1.0.15':
+    resolution: {integrity: sha512-nD6oNMFM11zsAynWP1zKnLsjUHpmv6JWHIzJKYhN4q9wrdqUiFIvOqkT+FbhEtUVRYKKpelIplELHjmsMG9vgA==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@fugood/node-whisper-linux-arm64-vulkan@1.0.15':
+    resolution: {integrity: sha512-7Yz/WOyQMn98o0m2fRNlcv0RA7sGPwGf5Sc9I8OpSyMeAdGi160Zvr8OSic3p8mXLHZsAliBlchGjx2wKtaeVg==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@fugood/node-whisper-linux-arm64@1.0.15':
+    resolution: {integrity: sha512-nzphDr1nzmidweVUQMExh6KA9qYkwEWY5Rzd2I9A+8U46KzQH3DmQ3BaTcqj4f7wg445R9RMXq0fHHr9Mpn6xQ==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@fugood/node-whisper-linux-x64-cuda@1.0.15':
+    resolution: {integrity: sha512-d+KxIQ5YIjPP88ZfBaUNNWk1yc10q+GVSJutjk5xfirZy7nEqGDCVFYtBh0eVgocGuMiYW3ah5h7Pnfqw72WBg==}
+    cpu: [x64]
+    os: [linux]
+
+  '@fugood/node-whisper-linux-x64-vulkan@1.0.15':
+    resolution: {integrity: sha512-0qFgwZeh7uNyoqng92YocgQtz+iJl8JlXqX3ab5JU8s4f+5khaDiwoULqldOHjPDk88z75dQV/J61XcJD+PN+w==}
+    cpu: [x64]
+    os: [linux]
+
+  '@fugood/node-whisper-linux-x64@1.0.15':
+    resolution: {integrity: sha512-38Dkg8AMLplk/BX3smJTqH5IJY1PaCn0bSCoqE/cUj1wZ6Qdt3ZyzmWAFlpcNbjlmY45W/v5yFghGRsyGb9y5Q==}
+    cpu: [x64]
+    os: [linux]
+
+  '@fugood/node-whisper-win32-arm64-vulkan@1.0.15':
+    resolution: {integrity: sha512-usQpbSQJuwetMfmJ537vsbk5N41KD3aN8sukYNWjXkaFHJbweXjXQrLPTlVO6lZnvQr93HR5sL0Yl1hNqDVbZQ==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@fugood/node-whisper-win32-arm64@1.0.15':
+    resolution: {integrity: sha512-2usGwWb4osCnDyr+gwoDj2MP7yaJzwksVILwnw+7m5xoNiZ2ZUVJGKdlslTJNzWJznoJ3X0FDiQH1ie4TZIWRQ==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@fugood/node-whisper-win32-x64-cuda@1.0.15':
+    resolution: {integrity: sha512-C5EH5Mi9ulbpOnMFWcvGDPlrinj/qyen9z+2Sv0dpUkUKUAweP2qCX2tqgX9Y6RUqyRLQjxy2tzDa5GTLrhSAw==}
+    cpu: [x64]
+    os: [win32]
+
+  '@fugood/node-whisper-win32-x64-vulkan@1.0.15':
+    resolution: {integrity: sha512-cZFwBq9Te/65egApER4zewU+Z4sJ9S9RlzLfI4eTenSvFW5/OcnAma1UWNT/rvSCLZrL+kSFU5OzjMraN82pgw==}
+    cpu: [x64]
+    os: [win32]
+
+  '@fugood/node-whisper-win32-x64@1.0.15':
+    resolution: {integrity: sha512-QLWYTm6Y11w6lirBGPjG7msh1xYdpYdYvJy7iptPDbSjyfjxo9Jl5J1twn46Ekk9pfkY7RPWYJ57TvHNSCfngQ==}
+    cpu: [x64]
+    os: [win32]
+
+  '@fugood/whisper.node@1.0.15':
+    resolution: {integrity: sha512-t/MFumwRtHbEk40lCKj5kM+q9N95OQgSIkS+PU7SgwIpjIE5t1kpMzlgKCKUFy53gqbpcYE299Jt0P0rs9Lvrg==}
+    engines: {node: '>=16.0.0'}
 
   '@hapi/address@5.1.1':
     resolution: {integrity: sha512-A+po2d/dVoY7cYajycYI43ZbYMXukuopIsqCjh5QzsBCipDtdofHntljDlpccMjIfTy6UOkg+5KPriwYch2bXA==}
@@ -2320,6 +2392,61 @@ snapshots:
       react-dom: 19.2.4(react@19.2.4)
 
   '@floating-ui/utils@0.2.10': {}
+
+  '@fugood/node-whisper-darwin-arm64@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-darwin-x64@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-linux-arm64-cuda@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-linux-arm64-vulkan@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-linux-arm64@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-linux-x64-cuda@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-linux-x64-vulkan@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-linux-x64@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-win32-arm64-vulkan@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-win32-arm64@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-win32-x64-cuda@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-win32-x64-vulkan@1.0.15':
+    optional: true
+
+  '@fugood/node-whisper-win32-x64@1.0.15':
+    optional: true
+
+  '@fugood/whisper.node@1.0.15':
+    optionalDependencies:
+      '@fugood/node-whisper-darwin-arm64': 1.0.15
+      '@fugood/node-whisper-darwin-x64': 1.0.15
+      '@fugood/node-whisper-linux-arm64': 1.0.15
+      '@fugood/node-whisper-linux-arm64-cuda': 1.0.15
+      '@fugood/node-whisper-linux-arm64-vulkan': 1.0.15
+      '@fugood/node-whisper-linux-x64': 1.0.15
+      '@fugood/node-whisper-linux-x64-cuda': 1.0.15
+      '@fugood/node-whisper-linux-x64-vulkan': 1.0.15
+      '@fugood/node-whisper-win32-arm64': 1.0.15
+      '@fugood/node-whisper-win32-arm64-vulkan': 1.0.15
+      '@fugood/node-whisper-win32-x64': 1.0.15
+      '@fugood/node-whisper-win32-x64-cuda': 1.0.15
+      '@fugood/node-whisper-win32-x64-vulkan': 1.0.15
 
   '@hapi/address@5.1.1':
     dependencies:

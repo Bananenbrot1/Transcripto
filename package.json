@@ -28,10 +28,12 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
-      "esbuild"
+      "esbuild",
+      "@fugood/whisper.node"
     ]
   },
   "dependencies": {
+    "@fugood/whisper.node": "^1.0.15",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.563.0",

@@ -1,4 +1,5 @@
 node_modules/
 dist/
 out/
+models/
 .DS_Store
