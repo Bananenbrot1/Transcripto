@@ -52,7 +52,7 @@ export function useTranscription() {
     }
   }, []);
 
-  const { isCapturing, systemAudioStatus, debugInfo, startCapture, stopCapture } = useAudioCapture({
+  const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute } = useAudioCapture({
     onSpeechEnd,
     onRMS,
   });
@@ -90,7 +90,9 @@ export function useTranscription() {
     debugInfo,
     micRMS,
     systemRMS,
+    isMicMuted,
     startRecording,
     stopRecording,
+    toggleMicMute,
   };
 }

@@ -21,6 +21,8 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [systemAudioStatus, setSystemAudioStatus] = useState<SystemAudioStatus>('inactive');
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
+  const [isMicMuted, setIsMicMuted] = useState(false);
+  const micMutedRef = useRef(false);
   const micPipeline = useRef<AudioPipeline | null>(null);
   const sysPipeline = useRef<AudioPipeline | null>(null);
   const callbacksRef = useRef(callbacks);
@@ -31,8 +33,17 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
     setDebugInfo((prev) => [...prev, msg]);
   }, []);
 
+  const toggleMicMute = useCallback(() => {
+    const next = !micMutedRef.current;
+    micMutedRef.current = next;
+    setIsMicMuted(next);
+    if (next && micPipeline.current) {
+      micPipeline.current.vad.flush();
+    }
+  }, []);
+
   const createPipeline = useCallback(
-    async (stream: MediaStream, source: AudioSource): Promise<AudioPipeline> => {
+    async (stream: MediaStream, source: AudioSource, isMutedFn?: () => boolean): Promise<AudioPipeline> => {
       const audioContext = new AudioContext({ sampleRate: 48000 });
       await audioContext.audioWorklet.addModule('/pcm-worklet-processor.js');
 
@@ -49,6 +60,10 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
 
       workletNode.port.onmessage = (event) => {
         if (event.data.type === 'pcm') {
+          if (isMutedFn?.()) {
+            callbacksRef.current.onRMS(source, 0);
+            return;
+          }
           vad.process(event.data.samples);
         }
       };
@@ -87,7 +102,7 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
     });
     const micTracks = micStream.getAudioTracks();
     log(`Mic stream: ${micTracks.length} audio tracks, state=${micTracks[0]?.readyState}, enabled=${micTracks[0]?.enabled}`);
-    micPipeline.current = await createPipeline(micStream, 'mic');
+    micPipeline.current = await createPipeline(micStream, 'mic', () => micMutedRef.current);
 
     // 2. System audio capture via getDisplayMedia
     if (permissions.screen !== 'granted') {
@@ -147,9 +162,11 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
     }
     micPipeline.current = null;
     sysPipeline.current = null;
+    micMutedRef.current = false;
+    setIsMicMuted(false);
     setIsCapturing(false);
     setSystemAudioStatus('inactive');
   }, []);
 
-  return { isCapturing, systemAudioStatus, debugInfo, startCapture, stopCapture };
+  return { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute };
 }

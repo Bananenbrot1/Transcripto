@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mic, Monitor, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Mic, MicOff, Monitor, AlertTriangle, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SystemAudioStatus } from '@/hooks/use-audio-capture';
 
@@ -8,6 +8,7 @@ interface AudioSourceIndicatorProps {
   systemRMS: number;
   isCapturing: boolean;
   systemAudioStatus: SystemAudioStatus;
+  isMicMuted: boolean;
 }
 
 function LevelBar({ level, max = 0.3 }: { level: number; max?: number }) {
@@ -66,15 +67,18 @@ export function AudioSourceIndicator({
   systemRMS,
   isCapturing,
   systemAudioStatus,
+  isMicMuted,
 }: AudioSourceIndicatorProps) {
   if (!isCapturing) return null;
+
+  const MicIcon = isMicMuted ? MicOff : Mic;
 
   return (
     <div className="space-y-3">
       <div className="flex gap-6 items-center">
         <div className="flex items-center gap-2 flex-1">
-          <Mic className="size-4 text-muted-foreground shrink-0" />
-          <LevelBar level={micRMS} />
+          <MicIcon className={`size-4 shrink-0 ${isMicMuted ? 'text-red-500' : 'text-muted-foreground'}`} />
+          <LevelBar level={isMicMuted ? 0 : micRMS} />
         </div>
         <div className="flex items-center gap-2 flex-1">
           <Monitor className="size-4 text-muted-foreground shrink-0" />

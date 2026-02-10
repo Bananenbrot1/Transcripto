@@ -1,7 +1,9 @@
+import { Mic, MicOff } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { ModelDownloadScreen } from '@/components/model-download-screen';
 import { RecordButton } from '@/components/record-button';
+import { Button } from '@/components/ui/button';
 import { AudioSourceIndicator } from '@/components/audio-source-indicator';
 import { TranscriptPanel } from '@/components/transcript-panel';
 
@@ -15,8 +17,10 @@ export function App() {
     debugInfo,
     micRMS,
     systemRMS,
+    isMicMuted,
     startRecording,
     stopRecording,
+    toggleMicMute,
   } = useTranscription();
 
   if (!status.whisperReady) {
@@ -34,17 +38,30 @@ export function App() {
       <header className="border-b px-6 py-4 space-y-3">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold tracking-tight">Transcripto</h1>
-          <RecordButton
-            recordingState={recordingState}
-            onStart={startRecording}
-            onStop={stopRecording}
-          />
+          <div className="flex items-center gap-2">
+            {isCapturing && (
+              <Button
+                variant={isMicMuted ? 'destructive' : 'outline'}
+                size="sm"
+                onClick={toggleMicMute}
+              >
+                {isMicMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+                {isMicMuted ? 'Mic Muted' : 'Mute Mic'}
+              </Button>
+            )}
+            <RecordButton
+              recordingState={recordingState}
+              onStart={startRecording}
+              onStop={stopRecording}
+            />
+          </div>
         </div>
         <AudioSourceIndicator
           micRMS={micRMS}
           systemRMS={systemRMS}
           isCapturing={isCapturing}
           systemAudioStatus={systemAudioStatus}
+          isMicMuted={isMicMuted}
         />
       </header>
       <main className="flex-1 overflow-hidden flex flex-col px-6 py-4">
