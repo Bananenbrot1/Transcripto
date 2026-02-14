@@ -15,6 +15,15 @@ function registerIpcHandlers() {
     return { downloaded: modelManager.isModelDownloaded(modelId) };
   });
 
+  ipcMain.handle('check-all-model-status', () => {
+    const models = modelManager.getAvailableModels();
+    const result = {};
+    for (const model of models) {
+      result[model.id] = modelManager.isModelDownloaded(model.id);
+    }
+    return result;
+  });
+
   ipcMain.handle('download-model', async (event, modelId) => {
     await modelManager.downloadModel(modelId, (progress) => {
       event.sender.send('download-progress', progress);

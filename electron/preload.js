@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   checkModelStatus: (modelId) => ipcRenderer.invoke('check-model-status', modelId),
 
+  checkAllModelStatus: () => ipcRenderer.invoke('check-all-model-status'),
+
   downloadModel: (modelId) => ipcRenderer.invoke('download-model', modelId),
 
   onDownloadProgress: (callback) => {

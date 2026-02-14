@@ -20,6 +20,7 @@ export function App() {
     selectedLanguage,
     setSelectedModel,
     setSelectedLanguage,
+    downloadedModels,
     downloadModel,
     initializeWhisper,
     changeModel,
@@ -91,6 +92,7 @@ export function App() {
         models={models}
         selectedModel={selectedModel}
         selectedLanguage={selectedLanguage}
+        downloadedModels={downloadedModels}
         onSelectModel={setSelectedModel}
         onSelectLanguage={setSelectedLanguage}
         onDownload={downloadModel}

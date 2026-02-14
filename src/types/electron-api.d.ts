@@ -8,6 +8,7 @@ export interface MediaPermissions {
 export interface ElectronAPI {
   getAvailableModels: () => Promise<ModelDefinition[]>;
   checkModelStatus: (modelId: string) => Promise<{ downloaded: boolean }>;
+  checkAllModelStatus: () => Promise<Record<string, boolean>>;
   downloadModel: (modelId: string) => Promise<void>;
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => () => void;
   initializeWhisper: (modelId: string) => Promise<void>;

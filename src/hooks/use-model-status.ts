@@ -14,6 +14,7 @@ export function useModelStatus() {
   });
 
   const [models, setModels] = useState<ModelDefinition[]>([]);
+  const [downloadedModels, setDownloadedModels] = useState<Record<string, boolean>>({});
 
   const [selectedModel, setSelectedModelState] = useState<string>(
     () => localStorage.getItem('transcripto-model') || DEFAULT_MODEL,
@@ -26,24 +27,29 @@ export function useModelStatus() {
   const setSelectedModel = useCallback((id: string) => {
     localStorage.setItem('transcripto-model', id);
     setSelectedModelState(id);
-  }, []);
+    setStatus((s) => ({ ...s, downloaded: !!downloadedModels[id] }));
+  }, [downloadedModels]);
 
   const setSelectedLanguage = useCallback((lang: string) => {
     localStorage.setItem('transcripto-language', lang);
     setSelectedLanguageState(lang);
   }, []);
 
-  // Fetch model catalog on mount
-  useEffect(() => {
-    window.electronAPI.getAvailableModels().then(setModels);
+  const refreshDownloadedModels = useCallback(async () => {
+    const statusMap = await window.electronAPI.checkAllModelStatus();
+    setDownloadedModels(statusMap);
+    return statusMap;
   }, []);
 
-  // Check if selected model is already downloaded
+  // Fetch model catalog and downloaded status on mount
   useEffect(() => {
-    window.electronAPI.checkModelStatus(selectedModel).then(({ downloaded }) => {
-      setStatus((s) => ({ ...s, downloaded }));
+    window.electronAPI.getAvailableModels().then(setModels);
+    refreshDownloadedModels().then((statusMap) => {
+      setStatus((s) => ({ ...s, downloaded: !!statusMap[selectedModel] }));
     });
-  }, [selectedModel]);
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const unsubscribe = window.electronAPI.onDownloadProgress((progress) => {
@@ -57,6 +63,7 @@ export function useModelStatus() {
     try {
       await window.electronAPI.downloadModel(selectedModel);
       setStatus((s) => ({ ...s, downloaded: true, downloading: false, progress: 100 }));
+      await refreshDownloadedModels();
     } catch (err) {
       setStatus((s) => ({
         ...s,
@@ -64,7 +71,7 @@ export function useModelStatus() {
         error: err instanceof Error ? err.message : 'Download failed',
       }));
     }
-  }, [selectedModel]);
+  }, [selectedModel, refreshDownloadedModels]);
 
   const initializeWhisper = useCallback(async () => {
     try {
@@ -81,13 +88,15 @@ export function useModelStatus() {
   const changeModel = useCallback(async () => {
     await window.electronAPI.releaseWhisper();
     setStatus((s) => ({ ...s, whisperReady: false, downloaded: false }));
-  }, []);
+    await refreshDownloadedModels();
+  }, [refreshDownloadedModels]);
 
   return {
     status,
     models,
     selectedModel,
     selectedLanguage,
+    downloadedModels,
     setSelectedModel,
     setSelectedLanguage,
     downloadModel,

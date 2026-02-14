@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Download, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { Download, Loader2, AlertCircle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ModelStatus, ModelDefinition } from '@/types/transcription';
 
@@ -37,6 +37,7 @@ interface ModelDownloadScreenProps {
   models: ModelDefinition[];
   selectedModel: string;
   selectedLanguage: string;
+  downloadedModels: Record<string, boolean>;
   onSelectModel: (id: string) => void;
   onSelectLanguage: (lang: string) => void;
   onDownload: () => void;
@@ -48,22 +49,17 @@ export function ModelDownloadScreen({
   models,
   selectedModel,
   selectedLanguage,
+  downloadedModels,
   onSelectModel,
   onSelectLanguage,
   onDownload,
   onInitialize,
 }: ModelDownloadScreenProps) {
   const currentModel = models.find((m) => m.id === selectedModel);
+  const [initializing, setInitializing] = useState(false);
 
-  // Auto-initialize whisper once the model is downloaded
-  const shouldAutoInit = status.downloaded && !status.whisperReady && !status.error && !status.downloading;
-  useEffect(() => {
-    if (shouldAutoInit) {
-      onInitialize();
-    }
-  }, [shouldAutoInit, onInitialize]);
-
-  if (shouldAutoInit || (status.downloaded && !status.whisperReady && !status.error)) {
+  // Show loading screen while initializing
+  if (initializing && !status.whisperReady && !status.error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
         <div className="text-center space-y-4 max-w-md">
@@ -75,6 +71,11 @@ export function ModelDownloadScreen({
         </div>
       </div>
     );
+  }
+
+  // Reset initializing state on error so user can retry
+  if (status.error && initializing) {
+    setInitializing(false);
   }
 
   return (
@@ -97,7 +98,7 @@ export function ModelDownloadScreen({
               >
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.label} ({formatSize(m.sizeMB)})
+                    {m.label} ({formatSize(m.sizeMB)}){downloadedModels[m.id] ? ' \u2713' : ''}
                   </option>
                 ))}
               </select>
@@ -141,10 +142,10 @@ export function ModelDownloadScreen({
             </div>
           </div>
         ) : status.downloaded ? (
-          <div className="flex items-center gap-2 text-green-600 justify-center">
-            <CheckCircle2 className="size-5" />
-            <span>Model downloaded</span>
-          </div>
+          <Button onClick={() => { setInitializing(true); onInitialize(); }} size="lg">
+            <Check className="size-4" />
+            Select Model
+          </Button>
         ) : (
           <Button onClick={onDownload} size="lg">
             <Download className="size-4" />
