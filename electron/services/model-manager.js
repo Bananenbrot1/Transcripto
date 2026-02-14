@@ -3,35 +3,56 @@ const path = require('node:path');
 const fs = require('node:fs');
 const https = require('node:https');
 
-const MODEL_FILENAME = 'ggml-large-v3-turbo-q5_0.bin';
-const MODEL_URL =
-  'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin';
+const BASE_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/';
+
+const MODEL_CATALOG = {
+  tiny: { id: 'tiny', fileName: 'ggml-tiny.bin', sizeMB: 75, label: 'Tiny — Fastest' },
+  base: { id: 'base', fileName: 'ggml-base.bin', sizeMB: 142, label: 'Base — Fast' },
+  small: { id: 'small', fileName: 'ggml-small.bin', sizeMB: 466, label: 'Small — Balanced' },
+  medium: { id: 'medium', fileName: 'ggml-medium.bin', sizeMB: 1500, label: 'Medium — Accurate' },
+  'large-v3-turbo-q5': {
+    id: 'large-v3-turbo-q5',
+    fileName: 'ggml-large-v3-turbo-q5_0.bin',
+    sizeMB: 547,
+    label: 'Large v3 Turbo (recommended)',
+  },
+};
 
 function getModelsDir() {
   return path.join(app.getPath('userData'), 'models');
 }
 
-function getModelPath() {
-  return path.join(getModelsDir(), MODEL_FILENAME);
+function getModelPath(modelId) {
+  const model = MODEL_CATALOG[modelId];
+  if (!model) throw new Error(`Unknown model: ${modelId}`);
+  return path.join(getModelsDir(), model.fileName);
 }
 
-function isModelDownloaded() {
-  return fs.existsSync(getModelPath());
+function isModelDownloaded(modelId) {
+  return fs.existsSync(getModelPath(modelId));
 }
 
-function downloadModel(onProgress) {
+function getAvailableModels() {
+  return Object.values(MODEL_CATALOG);
+}
+
+function downloadModel(modelId, onProgress) {
+  const model = MODEL_CATALOG[modelId];
+  if (!model) return Promise.reject(new Error(`Unknown model: ${modelId}`));
+
   return new Promise((resolve, reject) => {
     const modelsDir = getModelsDir();
     fs.mkdirSync(modelsDir, { recursive: true });
 
-    const finalPath = getModelPath();
+    const finalPath = getModelPath(modelId);
     const tmpPath = finalPath + '.tmp';
 
     const file = fs.createWriteStream(tmpPath);
+    const url = BASE_URL + model.fileName;
 
-    function doRequest(url) {
+    function doRequest(reqUrl) {
       https
-        .get(url, (response) => {
+        .get(reqUrl, (response) => {
           if (
             response.statusCode >= 300 &&
             response.statusCode < 400 &&
@@ -82,8 +103,8 @@ function downloadModel(onProgress) {
         });
     }
 
-    doRequest(MODEL_URL);
+    doRequest(url);
   });
 }
 
-module.exports = { getModelPath, isModelDownloaded, downloadModel };
+module.exports = { getModelPath, isModelDownloaded, downloadModel, getAvailableModels };

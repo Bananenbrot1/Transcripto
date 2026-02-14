@@ -1,12 +1,9 @@
 const { initWhisper } = require('@fugood/whisper.node');
-const { getModelPath } = require('./model-manager');
 
 let micContext = null;
 let sysContext = null;
 
-async function initialize() {
-  const modelPath = getModelPath();
-
+async function initialize(modelPath) {
   // Create two separate contexts for concurrent transcription
   [micContext, sysContext] = await Promise.all([
     initWhisper({ filePath: modelPath, useGpu: true }),
@@ -14,7 +11,7 @@ async function initialize() {
   ]);
 }
 
-async function transcribe(source, audioBuffer) {
+async function transcribe(source, audioBuffer, language) {
   const ctx = source === 'mic' ? micContext : sysContext;
   if (!ctx) {
     throw new Error('Whisper not initialized');
@@ -30,7 +27,7 @@ async function transcribe(source, audioBuffer) {
   }
 
   const { promise } = ctx.transcribeData(int16.buffer, {
-    language: 'en',
+    language: language || 'auto',
     maxLen: 0, // no max length per segment
     temperature: 0.0,
   });

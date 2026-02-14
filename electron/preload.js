@@ -1,9 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  checkModelStatus: () => ipcRenderer.invoke('check-model-status'),
+  getAvailableModels: () => ipcRenderer.invoke('get-available-models'),
 
-  downloadModel: () => ipcRenderer.invoke('download-model'),
+  checkModelStatus: (modelId) => ipcRenderer.invoke('check-model-status', modelId),
+
+  downloadModel: (modelId) => ipcRenderer.invoke('download-model', modelId),
 
   onDownloadProgress: (callback) => {
     const handler = (_event, progress) => callback(progress);
@@ -11,10 +13,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('download-progress', handler);
   },
 
-  initializeWhisper: () => ipcRenderer.invoke('initialize-whisper'),
+  initializeWhisper: (modelId) => ipcRenderer.invoke('initialize-whisper', modelId),
 
-  transcribe: (source, audioBuffer) =>
-    ipcRenderer.invoke('transcribe', source, audioBuffer),
+  transcribe: (source, audioBuffer, language) =>
+    ipcRenderer.invoke('transcribe', source, audioBuffer, language),
 
   releaseWhisper: () => ipcRenderer.invoke('release-whisper'),
 
@@ -26,4 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('open-screen-permission-settings'),
 
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),
+
+  selectExportFolder: () => ipcRenderer.invoke('select-folder'),
+
+  saveMarkdown: (folderPath, filename, content) =>
+    ipcRenderer.invoke('save-markdown', folderPath, filename, content),
 });

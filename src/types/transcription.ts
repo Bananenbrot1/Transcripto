@@ -11,6 +11,13 @@ export interface TranscriptSegment {
   endTime: number;
 }
 
+export interface ModelDefinition {
+  id: string;
+  fileName: string;
+  sizeMB: number;
+  label: string;
+}
+
 export interface ModelStatus {
   downloaded: boolean;
   downloading: boolean;

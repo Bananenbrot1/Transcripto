@@ -8,12 +8,19 @@ import type {
 
 let segmentCounter = 0;
 
-export function useTranscription() {
+interface UseTranscriptionOptions {
+  language: string;
+}
+
+export function useTranscription({ language }: UseTranscriptionOptions) {
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [micRMS, setMicRMS] = useState(0);
   const [systemRMS, setSystemRMS] = useState(0);
+  const [recordingStartTime, setRecordingStartTime] = useState(0);
   const pendingRef = useRef(0);
+  const languageRef = useRef(language);
+  languageRef.current = language;
 
   const onSpeechEnd = useCallback(
     async (source: AudioSource, audioBuffer: ArrayBuffer) => {
@@ -21,7 +28,7 @@ export function useTranscription() {
       pendingRef.current++;
 
       try {
-        const result = await window.electronAPI.transcribe(source, audioBuffer);
+        const result = await window.electronAPI.transcribe(source, audioBuffer, languageRef.current);
 
         if (result.text) {
           const newSegment: TranscriptSegment = {
@@ -59,6 +66,7 @@ export function useTranscription() {
 
   const startRecording = useCallback(async () => {
     setRecordingState('recording');
+    setRecordingStartTime(Date.now());
     segmentCounter = 0;
     setSegments([]);
     try {
@@ -85,6 +93,7 @@ export function useTranscription() {
   return {
     segments,
     recordingState,
+    recordingStartTime,
     isCapturing,
     systemAudioStatus,
     debugInfo,

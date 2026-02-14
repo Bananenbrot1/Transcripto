@@ -1,17 +1,34 @@
-import { Mic, MicOff } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Download, Mic, MicOff, Settings, FileText } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
+import { useExportSettings } from '@/hooks/use-export-settings';
+import { applyTemplate, buildExportVariables } from '@/lib/format-export';
 import { ModelDownloadScreen } from '@/components/model-download-screen';
+import { ExportSettingsDialog } from '@/components/export-settings-dialog';
 import { RecordButton } from '@/components/record-button';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { AudioSourceIndicator } from '@/components/audio-source-indicator';
 import { TranscriptPanel } from '@/components/transcript-panel';
 
 export function App() {
-  const { status, downloadModel, initializeWhisper } = useModelStatus();
+  const {
+    status,
+    models,
+    selectedModel,
+    selectedLanguage,
+    setSelectedModel,
+    setSelectedLanguage,
+    downloadModel,
+    initializeWhisper,
+    changeModel,
+  } = useModelStatus();
+
   const {
     segments,
     recordingState,
+    recordingStartTime,
     isCapturing,
     systemAudioStatus,
     debugInfo,
@@ -21,17 +38,69 @@ export function App() {
     startRecording,
     stopRecording,
     toggleMicMute,
-  } = useTranscription();
+  } = useTranscription({ language: selectedLanguage });
+
+  const {
+    settings: exportSettings,
+    setFolder,
+    setFilenameTemplate,
+    setBodyTemplate,
+    setAutoSave,
+  } = useExportSettings();
+
+  const [title, setTitle] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const prevRecordingState = useRef(recordingState);
+
+  const handleSave = useCallback(async () => {
+    if (!exportSettings.folder || segments.length === 0) return;
+
+    const vars = buildExportVariables(segments, title, recordingStartTime);
+    const filename = applyTemplate(exportSettings.filenameTemplate, vars);
+    const content = applyTemplate(exportSettings.bodyTemplate, vars);
+
+    const result = await window.electronAPI.saveMarkdown(
+      exportSettings.folder,
+      filename,
+      content,
+    );
+
+    if (!result.success) {
+      console.error('Failed to save markdown:', result.error);
+    }
+  }, [exportSettings, segments, title, recordingStartTime]);
+
+  // Auto-save when recording stops
+  useEffect(() => {
+    if (
+      prevRecordingState.current === 'stopping' &&
+      recordingState === 'idle' &&
+      exportSettings.autoSave &&
+      exportSettings.folder &&
+      segments.length > 0
+    ) {
+      handleSave();
+    }
+    prevRecordingState.current = recordingState;
+  }, [recordingState, exportSettings.autoSave, exportSettings.folder, segments, handleSave]);
 
   if (!status.whisperReady) {
     return (
       <ModelDownloadScreen
         status={status}
+        models={models}
+        selectedModel={selectedModel}
+        selectedLanguage={selectedLanguage}
+        onSelectModel={setSelectedModel}
+        onSelectLanguage={setSelectedLanguage}
         onDownload={downloadModel}
         onInitialize={initializeWhisper}
       />
     );
   }
+
+  const currentModel = models.find((m) => m.id === selectedModel);
+  const canSave = segments.length > 0 && !!exportSettings.folder;
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -39,6 +108,15 @@ export function App() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold tracking-tight">Transcripto</h1>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={changeModel}
+              title="Change model or language"
+            >
+              <Settings className="size-4" />
+              {currentModel ? currentModel.label.split(' — ')[0].split(' (')[0] : selectedModel}
+            </Button>
             {isCapturing && (
               <Button
                 variant={isMicMuted ? 'destructive' : 'outline'}
@@ -56,13 +134,42 @@ export function App() {
             />
           </div>
         </div>
-        <AudioSourceIndicator
-          micRMS={micRMS}
-          systemRMS={systemRMS}
-          isCapturing={isCapturing}
-          systemAudioStatus={systemAudioStatus}
-          isMicMuted={isMicMuted}
-        />
+        <div className="flex items-center gap-2">
+          <AudioSourceIndicator
+            micRMS={micRMS}
+            systemRMS={systemRMS}
+            isCapturing={isCapturing}
+            systemAudioStatus={systemAudioStatus}
+            isMicMuted={isMicMuted}
+          />
+          <div className="ml-auto flex items-center gap-2">
+            {segments.length > 0 && (
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Transcript title..."
+                className="h-7 w-48 text-xs"
+              />
+            )}
+            <Button
+              variant="outline"
+              size="icon-xs"
+              onClick={handleSave}
+              disabled={!canSave}
+              title="Save as Markdown"
+            >
+              <Download className="size-3" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-xs"
+              onClick={() => setSettingsOpen(true)}
+              title="Export settings"
+            >
+              <FileText className="size-3" />
+            </Button>
+          </div>
+        </div>
       </header>
       <main className="flex-1 overflow-hidden flex flex-col px-6 py-4">
         <TranscriptPanel segments={segments} />
@@ -75,6 +182,16 @@ export function App() {
           ))}
         </footer>
       )}
+
+      <ExportSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        settings={exportSettings}
+        onFolderChange={setFolder}
+        onFilenameTemplateChange={setFilenameTemplate}
+        onBodyTemplateChange={setBodyTemplate}
+        onAutoSaveChange={setAutoSave}
+      />
     </div>
   );
 }

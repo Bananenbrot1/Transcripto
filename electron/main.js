@@ -1,27 +1,33 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog } = require('electron');
 const path = require('node:path');
 const modelManager = require('./services/model-manager');
 const whisperService = require('./services/whisper-service');
+const markdownExport = require('./services/markdown-export');
 
 const isDev = !app.isPackaged;
 
 function registerIpcHandlers() {
-  ipcMain.handle('check-model-status', () => {
-    return { downloaded: modelManager.isModelDownloaded() };
+  ipcMain.handle('get-available-models', () => {
+    return modelManager.getAvailableModels();
   });
 
-  ipcMain.handle('download-model', async (event) => {
-    await modelManager.downloadModel((progress) => {
+  ipcMain.handle('check-model-status', (_event, modelId) => {
+    return { downloaded: modelManager.isModelDownloaded(modelId) };
+  });
+
+  ipcMain.handle('download-model', async (event, modelId) => {
+    await modelManager.downloadModel(modelId, (progress) => {
       event.sender.send('download-progress', progress);
     });
   });
 
-  ipcMain.handle('initialize-whisper', async () => {
-    await whisperService.initialize();
+  ipcMain.handle('initialize-whisper', async (_event, modelId) => {
+    const modelPath = modelManager.getModelPath(modelId);
+    await whisperService.initialize(modelPath);
   });
 
-  ipcMain.handle('transcribe', async (_event, source, audioBuffer) => {
-    return await whisperService.transcribe(source, audioBuffer);
+  ipcMain.handle('transcribe', async (_event, source, audioBuffer, language) => {
+    return await whisperService.transcribe(source, audioBuffer, language);
   });
 
   ipcMain.handle('release-whisper', async () => {
@@ -49,6 +55,20 @@ function registerIpcHandlers() {
       appPath: app.getPath('exe'),
       isPackaged: app.isPackaged,
     };
+  });
+
+  ipcMain.handle('select-folder', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('save-markdown', (_event, folderPath, filename, content) => {
+    return markdownExport.saveMarkdown(folderPath, filename, content);
   });
 }
 
