@@ -7,14 +7,19 @@ function sanitizeFilename(name) {
 
 function saveMarkdown(folderPath, filename, content) {
   try {
+    const resolved = path.resolve(folderPath);
+    if (!path.isAbsolute(resolved) || resolved !== path.normalize(resolved)) {
+      return { success: false, error: 'Invalid folder path' };
+    }
+
     const safeName = sanitizeFilename(filename);
     if (!safeName) {
       return { success: false, error: 'Invalid filename' };
     }
 
-    fs.mkdirSync(folderPath, { recursive: true });
+    fs.mkdirSync(resolved, { recursive: true });
 
-    const filePath = path.join(folderPath, `${safeName}.md`);
+    const filePath = path.join(resolved, `${safeName}.md`);
     fs.writeFileSync(filePath, content, 'utf-8');
 
     return { success: true, filePath };

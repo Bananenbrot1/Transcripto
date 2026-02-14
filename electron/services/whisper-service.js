@@ -4,6 +4,11 @@ let micContext = null;
 let sysContext = null;
 
 async function initialize(modelPath) {
+  // Release any existing contexts before re-initializing
+  if (micContext || sysContext) {
+    await release();
+  }
+
   // Create two separate contexts for concurrent transcription
   [micContext, sysContext] = await Promise.all([
     initWhisper({ filePath: modelPath, useGpu: true }),

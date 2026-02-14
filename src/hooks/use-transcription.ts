@@ -6,8 +6,6 @@ import type {
   TranscriptSegment,
 } from '@/types/transcription';
 
-let segmentCounter = 0;
-
 interface UseTranscriptionOptions {
   language: string;
 }
@@ -19,6 +17,7 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
   const [systemRMS, setSystemRMS] = useState(0);
   const [recordingStartTime, setRecordingStartTime] = useState(0);
   const pendingRef = useRef(0);
+  const segmentCounterRef = useRef(0);
   const languageRef = useRef(language);
   languageRef.current = language;
 
@@ -32,7 +31,7 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
 
         if (result.text) {
           const newSegment: TranscriptSegment = {
-            id: `seg-${++segmentCounter}`,
+            id: `seg-${++segmentCounterRef.current}`,
             source,
             text: result.text,
             timestamp,
@@ -67,7 +66,7 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
   const startRecording = useCallback(async () => {
     setRecordingState('recording');
     setRecordingStartTime(Date.now());
-    segmentCounter = 0;
+    segmentCounterRef.current = 0;
     setSegments([]);
     try {
       await startCapture();

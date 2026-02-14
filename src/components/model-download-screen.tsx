@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Download, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ModelStatus, ModelDefinition } from '@/types/transcription';
@@ -54,12 +55,15 @@ export function ModelDownloadScreen({
 }: ModelDownloadScreenProps) {
   const currentModel = models.find((m) => m.id === selectedModel);
 
-  // Model downloaded but whisper not initialized yet -> auto-initialize
-  if (status.downloaded && !status.whisperReady && !status.error) {
-    if (!status.downloading) {
-      queueMicrotask(onInitialize);
+  // Auto-initialize whisper once the model is downloaded
+  const shouldAutoInit = status.downloaded && !status.whisperReady && !status.error && !status.downloading;
+  useEffect(() => {
+    if (shouldAutoInit) {
+      onInitialize();
     }
+  }, [shouldAutoInit, onInitialize]);
 
+  if (shouldAutoInit || (status.downloaded && !status.whisperReady && !status.error)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
         <div className="text-center space-y-4 max-w-md">
