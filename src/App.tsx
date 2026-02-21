@@ -4,6 +4,7 @@ import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
 import { applyTemplate, buildExportVariables } from '@/lib/format-export';
+import { LANGUAGES } from '@/lib/languages';
 import { ModelDownloadScreen } from '@/components/model-download-screen';
 import { ExportSettingsDialog } from '@/components/export-settings-dialog';
 import { RecordButton } from '@/components/record-button';
@@ -130,11 +131,23 @@ export function App() {
               variant="outline"
               size="sm"
               onClick={changeModel}
-              title="Change model or language"
+              title="Change model"
+              disabled={isCapturing}
             >
               <Settings className="size-4" />
               {currentModel ? currentModel.label.split(' — ')[0].split(' (')[0] : selectedModel}
             </Button>
+            <select
+              value={selectedLanguage}
+              onChange={(e) => setSelectedLanguage(e.target.value)}
+              disabled={isCapturing}
+              className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50"
+              title="Transcription language"
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
             {isCapturing && (
               <Button
                 variant={isMicMuted ? 'destructive' : 'outline'}

@@ -1,32 +1,8 @@
 import { useState } from 'react';
 import { Download, Loader2, AlertCircle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { LANGUAGES } from '@/lib/languages';
 import type { ModelStatus, ModelDefinition } from '@/types/transcription';
-
-const LANGUAGES: { code: string; label: string }[] = [
-  { code: 'auto', label: 'Auto-detect' },
-  { code: 'en', label: 'English' },
-  { code: 'de', label: 'German' },
-  { code: 'es', label: 'Spanish' },
-  { code: 'fr', label: 'French' },
-  { code: 'it', label: 'Italian' },
-  { code: 'pt', label: 'Portuguese' },
-  { code: 'nl', label: 'Dutch' },
-  { code: 'pl', label: 'Polish' },
-  { code: 'ru', label: 'Russian' },
-  { code: 'zh', label: 'Chinese' },
-  { code: 'ja', label: 'Japanese' },
-  { code: 'ko', label: 'Korean' },
-  { code: 'ar', label: 'Arabic' },
-  { code: 'hi', label: 'Hindi' },
-  { code: 'tr', label: 'Turkish' },
-  { code: 'sv', label: 'Swedish' },
-  { code: 'da', label: 'Danish' },
-  { code: 'no', label: 'Norwegian' },
-  { code: 'fi', label: 'Finnish' },
-  { code: 'cs', label: 'Czech' },
-  { code: 'uk', label: 'Ukrainian' },
-];
 
 function formatSize(mb: number) {
   return mb >= 1000 ? `~${(mb / 1000).toFixed(1)} GB` : `~${mb} MB`;
