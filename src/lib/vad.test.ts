@@ -13,7 +13,7 @@ function samplesForMs(ms: number): number {
 
 describe('SimpleVAD', () => {
   let vad: SimpleVAD;
-  let speechEndCb: Mock<(audio: Float32Array) => void>;
+  let speechEndCb: Mock<(audio: Float32Array, speechStartMs: number) => void>;
 
   beforeEach(() => {
     vad = new SimpleVAD({
@@ -22,7 +22,7 @@ describe('SimpleVAD', () => {
       maxSegmentMs: 5000,
       minSegmentMs: 200,
     });
-    speechEndCb = vi.fn<(audio: Float32Array) => void>();
+    speechEndCb = vi.fn<(audio: Float32Array, speechStartMs: number) => void>();
     vad.setSpeechEndCallback(speechEndCb);
   });
 
@@ -36,7 +36,7 @@ describe('SimpleVAD', () => {
       maxSegmentMs: 5000,
       minSegmentMs: 200,
     });
-    speechEndCb = vi.fn<(audio: Float32Array) => void>();
+    speechEndCb = vi.fn<(audio: Float32Array, speechStartMs: number) => void>();
     vad.setSpeechEndCallback(speechEndCb);
 
     // Feed loud audio at t=1000
@@ -70,7 +70,7 @@ describe('SimpleVAD', () => {
       maxSegmentMs: 5000,
       minSegmentMs: 500,
     });
-    speechEndCb = vi.fn<(audio: Float32Array) => void>();
+    speechEndCb = vi.fn<(audio: Float32Array, speechStartMs: number) => void>();
     vad.setSpeechEndCallback(speechEndCb);
 
     // Feed only a tiny amount of loud audio (100 samples = 6.25ms, way below 500ms)
@@ -96,7 +96,7 @@ describe('SimpleVAD', () => {
       maxSegmentMs: 500,
       minSegmentMs: 100,
     });
-    speechEndCb = vi.fn<(audio: Float32Array) => void>();
+    speechEndCb = vi.fn<(audio: Float32Array, speechStartMs: number) => void>();
     vad.setSpeechEndCallback(speechEndCb);
 
     // Feed loud audio at t=1000
@@ -122,7 +122,7 @@ describe('SimpleVAD', () => {
       maxSegmentMs: 5000,
       minSegmentMs: 200,
     });
-    speechEndCb = vi.fn<(audio: Float32Array) => void>();
+    speechEndCb = vi.fn<(audio: Float32Array, speechStartMs: number) => void>();
     vad.setSpeechEndCallback(speechEndCb);
 
     // Feed enough loud audio to meet minSegmentMs

@@ -13,6 +13,9 @@ export interface DiarizedSegment {
 }
 
 export function initialize(segmentationModelPath: string, embeddingModelPath: string): void {
+  // Already initialized — skip the expensive model reload.
+  if (diarizer) return;
+
   if (!sherpaOnnx) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     sherpaOnnx = require('sherpa-onnx-node') as SherpaOnnxModule;

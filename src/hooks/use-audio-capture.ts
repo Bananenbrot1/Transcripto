@@ -11,7 +11,7 @@ interface AudioPipeline {
 }
 
 interface AudioCaptureCallbacks {
-  onSpeechEnd: (source: AudioSource, audioBuffer: ArrayBuffer) => void;
+  onSpeechEnd: (source: AudioSource, audioBuffer: ArrayBuffer, speechStartMs: number) => void;
   onRMS: (source: AudioSource, rms: number) => void;
 }
 
@@ -27,12 +27,15 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
   const sysPipeline = useRef<AudioPipeline | null>(null);
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
-  // Accumulates all 16kHz mono Float32 chunks from both mic and system for post-recording diarization
-  const audioAccumulator = useRef<Float32Array[]>([]);
+  // Separate 16kHz mono accumulators for mic and system audio.
+  // Kept separate so getFullAudioBuffer() can produce a proper mixed-down
+  // mono signal rather than an interleaved scramble from two async pipelines.
+  const micAccumulator = useRef<Float32Array[]>([]);
+  const sysAccumulator = useRef<Float32Array[]>([]);
 
   const log = useCallback((msg: string) => {
     console.log(`[audio-capture] ${msg}`);
-    setDebugInfo((prev) => [...prev, msg]);
+    setDebugInfo((prev) => [...prev.slice(-199), msg]);
   }, []);
 
   const toggleMicMute = useCallback(() => {
@@ -60,8 +63,8 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
       const workletNode = new AudioWorkletNode(audioContext, 'pcm-worklet-processor');
 
       const vad = new SimpleVAD();
-      vad.setSpeechEndCallback((audio) => {
-        callbacksRef.current.onSpeechEnd(source, float32ToArrayBuffer(audio));
+      vad.setSpeechEndCallback((audio, speechStartMs) => {
+        callbacksRef.current.onSpeechEnd(source, float32ToArrayBuffer(audio), speechStartMs);
       });
       vad.setRMSCallback((rms) => {
         callbacksRef.current.onRMS(source, rms);
@@ -74,7 +77,8 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
           // The VAD still processes the (silent) samples so the RMS meter
           // drops to zero naturally via the track-level mute.
           if (!muted) {
-            audioAccumulator.current.push(new Float32Array(event.data.samples));
+            const acc = source === 'mic' ? micAccumulator : sysAccumulator;
+            acc.current.push(new Float32Array(event.data.samples));
           }
           vad.process(event.data.samples);
         }
@@ -86,26 +90,48 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
       workletNode.connect(silentGain);
       silentGain.connect(audioContext.destination);
 
+      // Resume the context automatically if it gets suspended (e.g. window loses focus).
+      audioContext.addEventListener('statechange', () => {
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().catch((err) => console.warn('[audio-capture] resume failed:', err));
+        }
+      });
+
       return { stream, audioContext, workletNode, vad };
     },
     [],
   );
 
   const getFullAudioBuffer = useCallback((): ArrayBuffer => {
-    const chunks = audioAccumulator.current;
-    const total = chunks.reduce((n, c) => n + c.length, 0);
-    const combined = new Float32Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
+    // Flatten each stream into a contiguous Float32Array.
+    const flatten = (chunks: Float32Array[]) => {
+      const total = chunks.reduce((n, c) => n + c.length, 0);
+      const out = new Float32Array(total);
+      let off = 0;
+      for (const c of chunks) { out.set(c, off); off += c.length; }
+      return out;
+    };
+
+    const mic = flatten(micAccumulator.current);
+    const sys = flatten(sysAccumulator.current);
+
+    // Additive mono mix: sum both streams sample-by-sample and clamp to [-1,1].
+    // Pad the shorter stream with silence so the mixed buffer covers the full
+    // recording duration for both sources.
+    const len = Math.max(mic.length, sys.length);
+    const mixed = new Float32Array(len);
+    for (let i = 0; i < len; i++) {
+      const m = i < mic.length ? mic[i] : 0;
+      const s = i < sys.length ? sys[i] : 0;
+      mixed[i] = Math.max(-1, Math.min(1, m + s));
     }
-    return combined.buffer;
+    return mixed.buffer;
   }, []);
 
   const startCapture = useCallback(async () => {
     setDebugInfo([]);
-    audioAccumulator.current = [];
+    micAccumulator.current = [];
+    sysAccumulator.current = [];
 
     // Check permissions first
     const permissions = await window.electronAPI.getMediaPermissions();
@@ -143,10 +169,10 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
         log(`getDisplayMedia returned: ${displayStream.getTracks().length} total tracks`);
 
         const videoTracks = displayStream.getVideoTracks();
-        log(`Video tracks: ${videoTracks.length} (disabling, not stopping)`);
-        videoTracks.forEach((track) => {
-          track.enabled = false;
-        });
+        log(`Video tracks: ${videoTracks.length} (stopping to dismiss screen-recording indicator)`);
+        // Stop (not just disable) the video track — stopping dismisses the
+        // macOS screen-recording indicator. Audio tracks are unaffected.
+        videoTracks.forEach((track) => track.stop());
 
         const audioTracks = displayStream.getAudioTracks();
         log(`Audio tracks: ${audioTracks.length}`);

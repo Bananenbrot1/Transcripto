@@ -6,11 +6,12 @@ export interface TranscriptSegment {
   id: string;
   source: AudioSource;
   speaker: string;
-  speakerId?: string;  // stable diarization speaker key (e.g. "Speaker A")
+  speakerId?: string;      // stable diarization speaker key (e.g. "Speaker A")
   text: string;
-  timestamp: number;
-  startTime: number;
-  endTime: number;
+  timestamp: number;       // wall-clock ms when VAD emitted the segment
+  speechStartMs: number;   // wall-clock ms when speech actually began (VAD segmentStartTime)
+  startTime: number;       // whisper t0 (seconds within the segment's audio)
+  endTime: number;         // whisper t1 (seconds within the segment's audio)
 }
 
 export interface DiarizationSegment {

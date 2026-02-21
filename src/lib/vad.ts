@@ -23,7 +23,7 @@ export class SimpleVAD {
   private silenceStartTime: number | null = null;
   private segmentStartTime: number | null = null;
 
-  private onSpeechEnd: ((audio: Float32Array) => void) | null = null;
+  private onSpeechEnd: ((audio: Float32Array, speechStartMs: number) => void) | null = null;
   private onRMS: ((rms: number) => void) | null = null;
 
   constructor(options: VADOptions = {}) {
@@ -33,7 +33,7 @@ export class SimpleVAD {
     this.minSegmentMs = options.minSegmentMs ?? 500;
   }
 
-  setSpeechEndCallback(cb: (audio: Float32Array) => void) {
+  setSpeechEndCallback(cb: (audio: Float32Array, speechStartMs: number) => void) {
     this.onSpeechEnd = cb;
   }
 
@@ -93,7 +93,9 @@ export class SimpleVAD {
     const durationMs = (this.totalSamples / 16000) * 1000;
     if (durationMs >= this.minSegmentMs && this.onSpeechEnd) {
       const audio = concatFloat32Arrays(this.chunks);
-      this.onSpeechEnd(audio);
+      // Pass the wall-clock time when speech began so callers can align
+      // diarization output (which uses seconds from audio start) correctly.
+      this.onSpeechEnd(audio, this.segmentStartTime ?? Date.now());
     }
     this.reset();
   }

@@ -13,6 +13,9 @@ interface TranscribeResult {
 
 const TURN_MARKER = ' [SPEAKER_TURN]';
 const TRANSCRIBE_TIMEOUT_MS = 20_000;
+// Maximum segments that may be queued (running + waiting) per source.
+// Excess segments are dropped rather than piling up unboundedly in memory.
+const MAX_QUEUE_DEPTH = 3;
 
 let micContext: WhisperContext | null = null;
 let sysContext: WhisperContext | null = null;
@@ -22,6 +25,8 @@ let sysContext: WhisperContext | null = null;
 // transcribeData on a context that is still busy, which causes a deadlock.
 let micHead: Promise<void> = Promise.resolve();
 let sysHead: Promise<void> = Promise.resolve();
+let micQueueDepth = 0;
+let sysQueueDepth = 0;
 
 export async function initialize(modelPath: string): Promise<void> {
   console.log(`[whisper] initialize: modelPath=${modelPath}`);
@@ -36,6 +41,8 @@ export async function initialize(modelPath: string): Promise<void> {
   ]);
   micHead = Promise.resolve();
   sysHead = Promise.resolve();
+  micQueueDepth = 0;
+  sysQueueDepth = 0;
   console.log('[whisper] initialize: contexts ready', { mic: !!micContext, sys: !!sysContext });
 }
 
@@ -128,6 +135,15 @@ export function transcribe(
   audioBuffer: ArrayBuffer,
   language: string,
 ): Promise<TranscribeResult> {
+  const depth = source === 'mic' ? micQueueDepth : sysQueueDepth;
+  if (depth >= MAX_QUEUE_DEPTH) {
+    console.warn(`[whisper] queue full (depth=${depth}) for source=${source} — dropping segment`);
+    return Promise.reject(new Error(`Whisper queue full for ${source}, segment dropped`));
+  }
+
+  if (source === 'mic') micQueueDepth++;
+  else sysQueueDepth++;
+
   // Claim the gate immediately so the next caller queues behind us.
   // The gate only opens once the previous NATIVE whisper op finishes.
   let releaseGate!: () => void;
@@ -140,13 +156,20 @@ export function transcribe(
     sysHead = gate;
   }
 
-  return prevHead.then(() => doTranscribe(source, audioBuffer, language, releaseGate));
+  return prevHead
+    .then(() => doTranscribe(source, audioBuffer, language, releaseGate))
+    .finally(() => {
+      if (source === 'mic') micQueueDepth--;
+      else sysQueueDepth--;
+    });
 }
 
 export async function release(): Promise<void> {
   console.log('[whisper] release called');
   micHead = Promise.resolve();
   sysHead = Promise.resolve();
+  micQueueDepth = 0;
+  sysQueueDepth = 0;
   const promises: Promise<void>[] = [];
   if (micContext) {
     promises.push(micContext.release());

@@ -26,6 +26,13 @@ export function saveMarkdown(folderPath: string, filename: string, content: stri
     fs.mkdirSync(resolved, { recursive: true });
 
     const filePath = path.join(resolved, `${safeName}.md`);
+
+    // Guard against path traversal: the resolved file path must stay inside
+    // the user-chosen folder, even after joining with the sanitized name.
+    if (!filePath.startsWith(resolved + path.sep) && filePath !== resolved) {
+      return { success: false, error: 'File path escapes the target folder' };
+    }
+
     fs.writeFileSync(filePath, content, 'utf-8');
 
     return { success: true, filePath };

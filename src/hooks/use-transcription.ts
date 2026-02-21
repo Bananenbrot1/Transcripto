@@ -28,7 +28,7 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
   languageRef.current = language;
 
   const onSpeechEnd = useCallback(
-    async (source: AudioSource, audioBuffer: ArrayBuffer) => {
+    async (source: AudioSource, audioBuffer: ArrayBuffer, speechStartMs: number) => {
       const timestamp = Date.now();
       pendingRef.current++;
       console.log(`[transcription] onSpeechEnd: source=${source}, byteLength=${audioBuffer.byteLength}, pending=${pendingRef.current}`);
@@ -45,6 +45,7 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
               speaker: 'You',
               text: result.text,
               timestamp,
+              speechStartMs,
               startTime: result.segments[0]?.t0 ?? 0,
               endTime: result.segments[result.segments.length - 1]?.t1 ?? 0,
             };
@@ -66,6 +67,7 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
                   speaker: `Speaker ${systemSpeakerRef.current}`,
                   text: currentTexts.join(' ').trim(),
                   timestamp,
+                  speechStartMs,
                   startTime: groupStart,
                   endTime: seg.t1,
                 });
@@ -87,6 +89,7 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
                   speaker: `Speaker ${systemSpeakerRef.current}`,
                   text: joinedText,
                   timestamp,
+                  speechStartMs,
                   startTime: groupStart,
                   endTime: lastSeg?.t1 ?? 0,
                 });
@@ -169,11 +172,13 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
       const buffer = getFullAudioBuffer();
       const diarSegments = await window.electronAPI.diarize(buffer);
 
-      const startTime = recordingStartTimeRef.current;
+      const recStart = recordingStartTimeRef.current;
       setSegments((prev) =>
         prev.map((seg) => {
-          // Map segment to diarization speaker by wall-clock offset
-          const relSec = (seg.timestamp - startTime) / 1000;
+          // Use speechStartMs (when VAD detected speech onset) rather than
+          // timestamp (when VAD emitted the segment after the silence gap).
+          // This gives a much more accurate offset into the diarization timeline.
+          const relSec = (seg.speechStartMs - recStart) / 1000;
           const match = diarSegments.find((d) => relSec >= d.start && relSec <= d.end);
           if (!match) return seg;
           return { ...seg, speaker: match.speaker, speakerId: match.speaker };
