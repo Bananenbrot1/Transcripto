@@ -1,0 +1,48 @@
+appId: com.transcripto.app
+productName: Transcripto
+copyright: "Copyright © 2026 Transcripto"
+
+# Build resources (icons, entitlements, etc.)
+directories:
+  buildResources: build
+  output: dist-app
+
+# Files to include in the packaged app.
+# electron-builder bundles node_modules automatically; these globs refine what
+# renderer/main process files are included from the project root.
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - "!**/*.map"
+  - "!**/*.ts"
+
+# Unpack native addons and shared libraries from the asar archive.
+# Node.js cannot dlopen() files inside an asar; they must live in app.asar.unpacked/.
+# sherpa-onnx's addon.js resolves `../sherpa-onnx-darwin-arm64/sherpa-onnx.node`
+# relative to itself, so the whole sibling package must be unpacked together.
+asarUnpack:
+  - "**/*.node"
+  - "**/*.dylib"
+  - "node_modules/sherpa-onnx-darwin-arm64/**"
+  - "node_modules/@fugood/node-whisper-darwin-arm64/**"
+
+# macOS target: Apple Silicon (arm64) only
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
+  category: public.app-category.productivity
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  # Usage descriptions shown in macOS permission dialogs
+  extendInfo:
+    NSMicrophoneUsageDescription: "Transcripto needs microphone access to transcribe your speech."
+    NSScreenCaptureDescription: "Transcripto needs screen recording access to capture system audio from other apps."
+
+dmg:
+  title: "${productName} ${version}"
+  # sign: true  # uncomment and add identity when you have an Apple Developer certificate
