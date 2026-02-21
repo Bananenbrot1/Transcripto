@@ -40,9 +40,8 @@ function formatDuration(ms: number): string {
 function renderSegments(segments: TranscriptSegment[]): string {
   return segments
     .map((seg) => {
-      const speaker = seg.source === 'mic' ? 'You' : 'Others';
       const time = formatTimestamp(seg.timestamp);
-      return `**${speaker}** *${time}*\n${seg.text}`;
+      return `**${seg.speaker}** *${time}*\n${seg.text}`;
     })
     .join('\n\n');
 }

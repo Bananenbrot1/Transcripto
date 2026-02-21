@@ -1,11 +1,17 @@
-const fs = require('node:fs');
-const path = require('node:path');
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
-function sanitizeFilename(name) {
+interface SaveResult {
+  success: boolean;
+  filePath?: string;
+  error?: string;
+}
+
+function sanitizeFilename(name: string): string {
   return name.replace(/[<>:"/\\|?*]/g, '').trim();
 }
 
-function saveMarkdown(folderPath, filename, content) {
+export function saveMarkdown(folderPath: string, filename: string, content: string): SaveResult {
   try {
     const resolved = path.resolve(folderPath);
     if (!path.isAbsolute(resolved) || resolved !== path.normalize(resolved)) {
@@ -24,8 +30,6 @@ function saveMarkdown(folderPath, filename, content) {
 
     return { success: true, filePath };
   } catch (err) {
-    return { success: false, error: err.message };
+    return { success: false, error: (err as Error).message };
   }
 }
-
-module.exports = { saveMarkdown };

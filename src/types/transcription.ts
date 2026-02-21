@@ -5,10 +5,18 @@ export type RecordingState = 'idle' | 'recording' | 'stopping';
 export interface TranscriptSegment {
   id: string;
   source: AudioSource;
+  speaker: string;
+  speakerId?: string;  // stable diarization speaker key (e.g. "Speaker A")
   text: string;
   timestamp: number;
   startTime: number;
   endTime: number;
+}
+
+export interface DiarizationSegment {
+  speaker: string;   // e.g. "Speaker A"
+  start: number;     // seconds from recording start
+  end: number;       // seconds from recording start
 }
 
 export interface ModelDefinition {
@@ -32,6 +40,7 @@ export interface TranscribeResult {
     text: string;
     t0: number;
     t1: number;
+    speakerTurn?: boolean;
   }>;
 }
 

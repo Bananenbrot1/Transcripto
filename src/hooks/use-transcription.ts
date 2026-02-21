@@ -6,6 +6,8 @@ import type {
   TranscriptSegment,
 } from '@/types/transcription';
 
+export type DiarizationState = 'idle' | 'models-missing' | 'available' | 'processing' | 'done' | 'error';
+
 interface UseTranscriptionOptions {
   language: string;
 }
@@ -16,35 +18,91 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
   const [micRMS, setMicRMS] = useState(0);
   const [systemRMS, setSystemRMS] = useState(0);
   const [recordingStartTime, setRecordingStartTime] = useState(0);
+  const [diarizationState, setDiarizationState] = useState<DiarizationState>('idle');
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
   const pendingRef = useRef(0);
   const segmentCounterRef = useRef(0);
+  const systemSpeakerRef = useRef(1);
   const languageRef = useRef(language);
+  const recordingStartTimeRef = useRef(0);
   languageRef.current = language;
 
   const onSpeechEnd = useCallback(
     async (source: AudioSource, audioBuffer: ArrayBuffer) => {
       const timestamp = Date.now();
       pendingRef.current++;
+      console.log(`[transcription] onSpeechEnd: source=${source}, byteLength=${audioBuffer.byteLength}, pending=${pendingRef.current}`);
 
       try {
         const result = await window.electronAPI.transcribe(source, audioBuffer, languageRef.current);
+        console.log(`[transcription] IPC result: source=${source}, text="${result.text.slice(0, 80)}", segments=${result.segments.length}`);
 
         if (result.text) {
-          const newSegment: TranscriptSegment = {
-            id: `seg-${++segmentCounterRef.current}`,
-            source,
-            text: result.text,
-            timestamp,
-            startTime: result.segments[0]?.t0 ?? 0,
-            endTime: result.segments[result.segments.length - 1]?.t1 ?? 0,
-          };
+          if (source === 'mic') {
+            const newSegment: TranscriptSegment = {
+              id: `seg-${++segmentCounterRef.current}`,
+              source,
+              speaker: 'You',
+              text: result.text,
+              timestamp,
+              startTime: result.segments[0]?.t0 ?? 0,
+              endTime: result.segments[result.segments.length - 1]?.t1 ?? 0,
+            };
+            setSegments((prev) => [...prev, newSegment].sort((a, b) => a.timestamp - b.timestamp));
+          } else {
+            // System audio: split into separate segments at speaker turns
+            const newSegments: TranscriptSegment[] = [];
+            let currentTexts: string[] = [];
+            let groupStart = result.segments[0]?.t0 ?? 0;
 
-          setSegments((prev) => [...prev, newSegment].sort((a, b) => a.timestamp - b.timestamp));
+            for (const seg of result.segments) {
+              currentTexts.push(seg.text);
+
+              if (seg.speakerTurn) {
+                // Emit accumulated segment for current speaker
+                newSegments.push({
+                  id: `seg-${++segmentCounterRef.current}`,
+                  source,
+                  speaker: `Speaker ${systemSpeakerRef.current}`,
+                  text: currentTexts.join(' ').trim(),
+                  timestamp,
+                  startTime: groupStart,
+                  endTime: seg.t1,
+                });
+                // Toggle speaker
+                systemSpeakerRef.current = systemSpeakerRef.current === 1 ? 2 : 1;
+                currentTexts = [];
+                groupStart = seg.t1;
+              }
+            }
+
+            // Emit remaining text
+            if (currentTexts.length > 0) {
+              const joinedText = currentTexts.join(' ').trim();
+              if (joinedText) {
+                const lastSeg = result.segments[result.segments.length - 1];
+                newSegments.push({
+                  id: `seg-${++segmentCounterRef.current}`,
+                  source,
+                  speaker: `Speaker ${systemSpeakerRef.current}`,
+                  text: joinedText,
+                  timestamp,
+                  startTime: groupStart,
+                  endTime: lastSeg?.t1 ?? 0,
+                });
+              }
+            }
+
+            if (newSegments.length > 0) {
+              setSegments((prev) => [...prev, ...newSegments].sort((a, b) => a.timestamp - b.timestamp));
+            }
+          }
         }
       } catch (err) {
-        console.error(`Transcription error (${source}):`, err);
+        console.error(`[transcription] IPC error (${source}):`, err);
       } finally {
         pendingRef.current--;
+        console.log(`[transcription] onSpeechEnd done: source=${source}, pending=${pendingRef.current}`);
       }
     },
     [],
@@ -58,16 +116,21 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
     }
   }, []);
 
-  const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute } = useAudioCapture({
+  const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute, getFullAudioBuffer } = useAudioCapture({
     onSpeechEnd,
     onRMS,
   });
 
   const startRecording = useCallback(async () => {
     setRecordingState('recording');
-    setRecordingStartTime(Date.now());
+    const now = Date.now();
+    setRecordingStartTime(now);
+    recordingStartTimeRef.current = now;
     segmentCounterRef.current = 0;
+    systemSpeakerRef.current = 1;
     setSegments([]);
+    setDiarizationState('idle');
+    setSpeakerNames({});
     try {
       await startCapture();
     } catch (err) {
@@ -87,7 +150,46 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
     }
 
     setRecordingState('idle');
+
+    // Check if diarization models are available
+    try {
+      const status = await window.electronAPI.checkDiarizationModels();
+      const modelsReady = status.segmentation && status.embedding;
+      setDiarizationState(modelsReady ? 'available' : 'models-missing');
+    } catch (err) {
+      console.error('Failed to check diarization models:', err);
+      setDiarizationState('models-missing');
+    }
   }, [stopCapture]);
+
+  const runDiarization = useCallback(async () => {
+    setDiarizationState('processing');
+    try {
+      await window.electronAPI.initializeDiarization();
+      const buffer = getFullAudioBuffer();
+      const diarSegments = await window.electronAPI.diarize(buffer);
+
+      const startTime = recordingStartTimeRef.current;
+      setSegments((prev) =>
+        prev.map((seg) => {
+          // Map segment to diarization speaker by wall-clock offset
+          const relSec = (seg.timestamp - startTime) / 1000;
+          const match = diarSegments.find((d) => relSec >= d.start && relSec <= d.end);
+          if (!match) return seg;
+          return { ...seg, speaker: match.speaker, speakerId: match.speaker };
+        }),
+      );
+
+      setDiarizationState('done');
+    } catch (err) {
+      console.error('Diarization failed:', err);
+      setDiarizationState('error');
+    }
+  }, [getFullAudioBuffer]);
+
+  const renameSpeaker = useCallback((speakerId: string, name: string) => {
+    setSpeakerNames((prev) => ({ ...prev, [speakerId]: name }));
+  }, []);
 
   return {
     segments,
@@ -99,8 +201,12 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
     micRMS,
     systemRMS,
     isMicMuted,
+    diarizationState,
+    speakerNames,
     startRecording,
     stopRecording,
     toggleMicMute,
+    runDiarization,
+    renameSpeaker,
   };
 }

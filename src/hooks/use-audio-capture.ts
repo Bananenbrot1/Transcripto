@@ -27,6 +27,8 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
   const sysPipeline = useRef<AudioPipeline | null>(null);
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
+  // Accumulates all 16kHz mono Float32 chunks from both mic and system for post-recording diarization
+  const audioAccumulator = useRef<Float32Array[]>([]);
 
   const log = useCallback((msg: string) => {
     console.log(`[audio-capture] ${msg}`);
@@ -64,6 +66,8 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
             callbacksRef.current.onRMS(source, 0);
             return;
           }
+          // Accumulate raw 16kHz chunks for post-recording diarization (both mic and system)
+          audioAccumulator.current.push(new Float32Array(event.data.samples));
           vad.process(event.data.samples);
         }
       };
@@ -79,8 +83,21 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
     [],
   );
 
+  const getFullAudioBuffer = useCallback((): ArrayBuffer => {
+    const chunks = audioAccumulator.current;
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const combined = new Float32Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return combined.buffer;
+  }, []);
+
   const startCapture = useCallback(async () => {
     setDebugInfo([]);
+    audioAccumulator.current = [];
 
     // Check permissions first
     const permissions = await window.electronAPI.getMediaPermissions();
@@ -168,5 +185,5 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
     setSystemAudioStatus('inactive');
   }, []);
 
-  return { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute };
+  return { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute, getFullAudioBuffer };
 }

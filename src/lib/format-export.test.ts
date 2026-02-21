@@ -59,6 +59,7 @@ describe('buildExportVariables', () => {
     {
       id: 'seg-1',
       source: 'mic',
+      speaker: 'You',
       text: 'Hello world',
       timestamp: new Date('2024-06-15T10:30:15').getTime(),
       startTime: 0,
@@ -67,6 +68,7 @@ describe('buildExportVariables', () => {
     {
       id: 'seg-2',
       source: 'system',
+      speaker: 'Speaker 1',
       text: 'Response here',
       timestamp: new Date('2024-06-15T10:30:25').getTime(),
       startTime: 2000,
@@ -92,7 +94,7 @@ describe('buildExportVariables', () => {
     const vars = buildExportVariables(segments, 'Test', Date.now());
     expect(vars.segments).toContain('**You**');
     expect(vars.segments).toContain('Hello world');
-    expect(vars.segments).toContain('**Others**');
+    expect(vars.segments).toContain('**Speaker 1**');
     expect(vars.segments).toContain('Response here');
   });
 

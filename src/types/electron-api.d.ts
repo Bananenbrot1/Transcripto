@@ -1,4 +1,4 @@
-import type { DownloadProgress, ModelDefinition, TranscribeResult } from './transcription';
+import type { DownloadProgress, DiarizationSegment, ModelDefinition, TranscribeResult } from './transcription';
 
 export interface MediaPermissions {
   mic: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
@@ -20,6 +20,18 @@ export interface ElectronAPI {
   getAppInfo: () => Promise<{ appName: string; appPath: string; isPackaged: boolean }>;
   selectExportFolder: () => Promise<string | null>;
   saveMarkdown: (folderPath: string, filename: string, content: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  checkDiarizationModels: () => Promise<{ segmentation: boolean; embedding: boolean; totalSizeMB: number }>;
+  downloadDiarizationModels: () => Promise<void>;
+  onDiarizationDownloadProgress: (cb: (p: DiarizationDownloadProgress) => void) => () => void;
+  initializeDiarization: () => Promise<void>;
+  diarize: (audioBuffer: ArrayBuffer) => Promise<DiarizationSegment[]>;
+}
+
+export interface DiarizationDownloadProgress {
+  phase: 'segmentation' | 'embedding' | 'extracting';
+  percent: number;
+  transferredBytes: number;
+  totalBytes: number;
 }
 
 declare global {

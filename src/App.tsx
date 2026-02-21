@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AudioSourceIndicator } from '@/components/audio-source-indicator';
 import { TranscriptPanel } from '@/components/transcript-panel';
+import { DiarizationControls } from '@/components/diarization-controls';
 
 export function App() {
   const {
@@ -36,9 +37,13 @@ export function App() {
     micRMS,
     systemRMS,
     isMicMuted,
+    diarizationState,
+    speakerNames,
     startRecording,
     stopRecording,
     toggleMicMute,
+    runDiarization,
+    renameSpeaker,
   } = useTranscription({ language: selectedLanguage });
 
   const {
@@ -51,23 +56,34 @@ export function App() {
 
   const [title, setTitle] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const prevRecordingState = useRef(recordingState);
 
   const handleSave = useCallback(async () => {
     if (!exportSettings.folder || segments.length === 0) return;
+    setSaveStatus('saving');
+    try {
+      const vars = buildExportVariables(segments, title, recordingStartTime);
+      const filename = applyTemplate(exportSettings.filenameTemplate, vars);
+      const content = applyTemplate(exportSettings.bodyTemplate, vars);
 
-    const vars = buildExportVariables(segments, title, recordingStartTime);
-    const filename = applyTemplate(exportSettings.filenameTemplate, vars);
-    const content = applyTemplate(exportSettings.bodyTemplate, vars);
+      const result = await window.electronAPI.saveMarkdown(
+        exportSettings.folder,
+        filename,
+        content,
+      );
 
-    const result = await window.electronAPI.saveMarkdown(
-      exportSettings.folder,
-      filename,
-      content,
-    );
-
-    if (!result.success) {
-      console.error('Failed to save markdown:', result.error);
+      if (result.success) {
+        setSaveStatus('saved');
+      } else {
+        console.error('Failed to save markdown:', result.error);
+        setSaveStatus('error');
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      setSaveStatus('error');
+    } finally {
+      setTimeout(() => setSaveStatus('idle'), 3000);
     }
   }, [exportSettings, segments, title, recordingStartTime]);
 
@@ -145,6 +161,12 @@ export function App() {
             isMicMuted={isMicMuted}
           />
           <div className="ml-auto flex items-center gap-2">
+            {saveStatus === 'saved' && (
+              <span className="text-xs text-green-600 font-medium">Saved!</span>
+            )}
+            {saveStatus === 'error' && (
+              <span className="text-xs text-destructive font-medium">Save failed</span>
+            )}
             {segments.length > 0 && (
               <Input
                 value={title}
@@ -157,8 +179,8 @@ export function App() {
               variant="outline"
               size="icon-xs"
               onClick={handleSave}
-              disabled={!canSave}
-              title="Save as Markdown"
+              disabled={!canSave || saveStatus === 'saving'}
+              title={!exportSettings.folder ? 'Configure output folder in Export Settings first' : 'Save as Markdown'}
             >
               <Download className="size-3" />
             </Button>
@@ -173,8 +195,13 @@ export function App() {
           </div>
         </div>
       </header>
-      <main className="flex-1 overflow-hidden flex flex-col px-6 py-4">
-        <TranscriptPanel segments={segments} />
+      <main className="flex-1 overflow-hidden flex flex-col px-6 py-4 gap-3">
+        <TranscriptPanel segments={segments} speakerNames={speakerNames} onRenameSpeaker={renameSpeaker} />
+        {recordingState === 'idle' && segments.length > 0 && (
+          <div className="shrink-0 pb-1">
+            <DiarizationControls diarizationState={diarizationState} onAnalyze={runDiarization} />
+          </div>
+        )}
       </main>
       {debugInfo.length > 0 && (
         <footer className="border-t px-6 py-3 max-h-40 overflow-y-auto">

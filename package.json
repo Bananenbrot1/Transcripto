@@ -2,11 +2,11 @@
   "name": "transcripto",
   "version": "1.0.0",
   "description": "Transcripto Electron App",
-  "main": "electron/main.js",
+  "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
-    "build": "tsc && vite build",
-    "start": "vite build && electron .",
+    "dev": "tsc -p tsconfig.electron.json && concurrently -k \"vite\" \"tsc -p tsconfig.electron.json -w\" \"wait-on tcp:5173 && electron .\"",
+    "build": "tsc -p tsconfig.electron.json && tsc && vite build",
+    "start": "tsc -p tsconfig.electron.json && vite build && electron .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -43,6 +43,7 @@
     "radix-ui": "^1.4.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "sherpa-onnx-node": "^1.12.25",
     "tailwind-merge": "^3.4.0"
   }
 }

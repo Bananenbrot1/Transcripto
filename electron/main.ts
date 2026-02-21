@@ -1,42 +1,52 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog } = require('electron');
-const path = require('node:path');
-const modelManager = require('./services/model-manager');
-const whisperService = require('./services/whisper-service');
-const markdownExport = require('./services/markdown-export');
+import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog } from 'electron';
+import * as path from 'node:path';
+import * as modelManager from './services/model-manager';
+import * as whisperService from './services/whisper-service';
+import * as markdownExport from './services/markdown-export';
+import * as diarizationModelManager from './services/diarization-model-manager';
+import * as diarizationService from './services/diarization-service';
 
 const isDev = !app.isPackaged;
 
-function registerIpcHandlers() {
+function registerIpcHandlers(): void {
   ipcMain.handle('get-available-models', () => {
     return modelManager.getAvailableModels();
   });
 
-  ipcMain.handle('check-model-status', (_event, modelId) => {
+  ipcMain.handle('check-model-status', (_event, modelId: string) => {
     return { downloaded: modelManager.isModelDownloaded(modelId) };
   });
 
   ipcMain.handle('check-all-model-status', () => {
     const models = modelManager.getAvailableModels();
-    const result = {};
+    const result: Record<string, boolean> = {};
     for (const model of models) {
       result[model.id] = modelManager.isModelDownloaded(model.id);
     }
     return result;
   });
 
-  ipcMain.handle('download-model', async (event, modelId) => {
+  ipcMain.handle('download-model', async (event, modelId: string) => {
     await modelManager.downloadModel(modelId, (progress) => {
       event.sender.send('download-progress', progress);
     });
   });
 
-  ipcMain.handle('initialize-whisper', async (_event, modelId) => {
+  ipcMain.handle('initialize-whisper', async (_event, modelId: string) => {
     const modelPath = modelManager.getModelPath(modelId);
     await whisperService.initialize(modelPath);
   });
 
-  ipcMain.handle('transcribe', async (_event, source, audioBuffer, language) => {
-    return await whisperService.transcribe(source, audioBuffer, language);
+  ipcMain.handle('transcribe', async (_event, source: 'mic' | 'system', audioBuffer: ArrayBuffer, language: string) => {
+    console.log(`[main] IPC transcribe: source=${source}, lang=${language}, byteLength=${audioBuffer?.byteLength}`);
+    try {
+      const result = await whisperService.transcribe(source, audioBuffer, language);
+      console.log(`[main] IPC transcribe done: text="${result.text.slice(0, 60)}"`);
+      return result;
+    } catch (err) {
+      console.error('[main] IPC transcribe error:', err);
+      throw err;
+    }
   });
 
   ipcMain.handle('release-whisper', async () => {
@@ -76,12 +86,36 @@ function registerIpcHandlers() {
     return result.filePaths[0];
   });
 
-  ipcMain.handle('save-markdown', (_event, folderPath, filename, content) => {
-    return markdownExport.saveMarkdown(folderPath, filename, content);
+  ipcMain.handle('save-markdown', (_event, folderPath: string, filename: string, content: string) => {
+    console.log(`[main] IPC save-markdown: folder="${folderPath}", filename="${filename}", contentLen=${content.length}`);
+    const result = markdownExport.saveMarkdown(folderPath, filename, content);
+    console.log(`[main] IPC save-markdown result:`, result);
+    return result;
+  });
+
+  ipcMain.handle('check-diarization-models', () =>
+    diarizationModelManager.isDiarizationModelsDownloaded(),
+  );
+
+  ipcMain.handle('download-diarization-models', async (event) => {
+    await diarizationModelManager.downloadDiarizationModels((progress) => {
+      event.sender.send('diarization-download-progress', progress);
+    });
+  });
+
+  ipcMain.handle('initialize-diarization', async () => {
+    diarizationService.initialize(
+      diarizationModelManager.getSegmentationModelPath(),
+      diarizationModelManager.getEmbeddingModelPath(),
+    );
+  });
+
+  ipcMain.handle('diarize', async (_event, audioBuffer: ArrayBuffer) => {
+    return await diarizationService.diarize(audioBuffer);
   });
 }
 
-function createWindow() {
+function createWindow(): void {
   const win = new BrowserWindow({
     width: 900,
     height: 670,
