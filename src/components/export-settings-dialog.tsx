@@ -1,4 +1,4 @@
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import type { ExportSettings } from '@/hooks/use-export-settings';
+import type { VADSettings } from '@/hooks/use-vad-settings';
 
 interface ExportSettingsDialogProps {
   open: boolean;
@@ -21,6 +22,12 @@ interface ExportSettingsDialogProps {
   onFilenameTemplateChange: (template: string) => void;
   onBodyTemplateChange: (template: string) => void;
   onAutoSaveChange: (enabled: boolean) => void;
+  vadSettings: VADSettings;
+  onSilenceThresholdChange: (v: number) => void;
+  onSilenceDurationMsChange: (v: number) => void;
+  onMaxSegmentMsChange: (v: number) => void;
+  onMinSegmentMsChange: (v: number) => void;
+  onResetVADDefaults: () => void;
 }
 
 export function ExportSettingsDialog({
@@ -31,6 +38,12 @@ export function ExportSettingsDialog({
   onFilenameTemplateChange,
   onBodyTemplateChange,
   onAutoSaveChange,
+  vadSettings,
+  onSilenceThresholdChange,
+  onSilenceDurationMsChange,
+  onMaxSegmentMsChange,
+  onMinSegmentMsChange,
+  onResetVADDefaults,
 }: ExportSettingsDialogProps) {
   const handleBrowse = async () => {
     const folder = await window.electronAPI.selectExportFolder();
@@ -41,7 +54,7 @@ export function ExportSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Export Settings</DialogTitle>
         </DialogHeader>
@@ -103,6 +116,80 @@ export function ExportSettingsDialog({
               checked={settings.autoSave}
               onCheckedChange={onAutoSaveChange}
             />
+          </div>
+
+          <div className="border-t pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Voice Detection</h3>
+              <Button variant="ghost" size="sm" onClick={onResetVADDefaults} className="h-7 text-xs gap-1">
+                <RotateCcw className="size-3" />
+                Reset defaults
+              </Button>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <Label htmlFor="vad-threshold" className="text-xs">Silence threshold</Label>
+                <span className="text-xs text-muted-foreground">{vadSettings.silenceThreshold.toFixed(3)}</span>
+              </div>
+              <input
+                id="vad-threshold"
+                type="range"
+                min="0.001" max="0.1" step="0.001"
+                value={vadSettings.silenceThreshold}
+                onChange={(e) => onSilenceThresholdChange(parseFloat(e.target.value))}
+                className="w-full h-1.5 accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">Lower = more sensitive to quiet speech</p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <Label htmlFor="vad-silence-duration" className="text-xs">Silence gap before cut</Label>
+                <span className="text-xs text-muted-foreground">{vadSettings.silenceDurationMs} ms</span>
+              </div>
+              <input
+                id="vad-silence-duration"
+                type="range"
+                min="200" max="3000" step="50"
+                value={vadSettings.silenceDurationMs}
+                onChange={(e) => onSilenceDurationMsChange(parseInt(e.target.value))}
+                className="w-full h-1.5 accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">Pause length that ends a segment</p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <Label htmlFor="vad-max-segment" className="text-xs">Max segment length</Label>
+                <span className="text-xs text-muted-foreground">{vadSettings.maxSegmentMs / 1000} s</span>
+              </div>
+              <input
+                id="vad-max-segment"
+                type="range"
+                min="5000" max="60000" step="1000"
+                value={vadSettings.maxSegmentMs}
+                onChange={(e) => onMaxSegmentMsChange(parseInt(e.target.value))}
+                className="w-full h-1.5 accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">Force-splits very long utterances</p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <Label htmlFor="vad-min-segment" className="text-xs">Min segment length</Label>
+                <span className="text-xs text-muted-foreground">{vadSettings.minSegmentMs} ms</span>
+              </div>
+              <input
+                id="vad-min-segment"
+                type="range"
+                min="100" max="2000" step="50"
+                value={vadSettings.minSegmentMs}
+                onChange={(e) => onMinSegmentMsChange(parseInt(e.target.value))}
+                className="w-full h-1.5 accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">Discard segments shorter than this</p>
+            </div>
           </div>
         </div>
 

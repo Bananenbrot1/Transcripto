@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from 'react';
-import { SimpleVAD } from '@/lib/vad';
+import { SimpleVAD, type VADOptions } from '@/lib/vad';
 import { float32ToArrayBuffer } from '@/lib/audio-utils';
 import type { AudioSource } from '@/types/transcription';
 
@@ -13,11 +13,12 @@ interface AudioPipeline {
 interface AudioCaptureCallbacks {
   onSpeechEnd: (source: AudioSource, audioBuffer: ArrayBuffer, speechStartMs: number) => void;
   onRMS: (source: AudioSource, rms: number) => void;
+  vadOptions?: VADOptions;
 }
 
 export type SystemAudioStatus = 'inactive' | 'active' | 'no-permission' | 'failed';
 
-export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
+export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: VADOptions) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [systemAudioStatus, setSystemAudioStatus] = useState<SystemAudioStatus>('inactive');
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
@@ -62,7 +63,7 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
       const sourceNode = audioContext.createMediaStreamSource(stream);
       const workletNode = new AudioWorkletNode(audioContext, 'pcm-worklet-processor');
 
-      const vad = new SimpleVAD();
+      const vad = new SimpleVAD(vadOptions);
       vad.setSpeechEndCallback((audio, speechStartMs) => {
         callbacksRef.current.onSpeechEnd(source, float32ToArrayBuffer(audio), speechStartMs);
       });

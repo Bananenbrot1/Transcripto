@@ -3,6 +3,7 @@ import { Download, Mic, MicOff, Settings, FileText } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
+import { useVADSettings } from '@/hooks/use-vad-settings';
 import { applyTemplate, buildExportVariables } from '@/lib/format-export';
 import { LANGUAGES } from '@/lib/languages';
 import { ModelDownloadScreen } from '@/components/model-download-screen';
@@ -29,6 +30,23 @@ export function App() {
   } = useModelStatus();
 
   const {
+    settings: exportSettings,
+    setFolder,
+    setFilenameTemplate,
+    setBodyTemplate,
+    setAutoSave,
+  } = useExportSettings();
+
+  const {
+    settings: vadSettings,
+    setSilenceThreshold,
+    setSilenceDurationMs,
+    setMaxSegmentMs,
+    setMinSegmentMs,
+    resetDefaults: resetVADDefaults,
+  } = useVADSettings();
+
+  const {
     segments,
     recordingState,
     recordingStartTime,
@@ -45,15 +63,7 @@ export function App() {
     toggleMicMute,
     runDiarization,
     renameSpeaker,
-  } = useTranscription({ language: selectedLanguage });
-
-  const {
-    settings: exportSettings,
-    setFolder,
-    setFilenameTemplate,
-    setBodyTemplate,
-    setAutoSave,
-  } = useExportSettings();
+  } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings });
 
   const [title, setTitle] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -233,6 +243,12 @@ export function App() {
         onFilenameTemplateChange={setFilenameTemplate}
         onBodyTemplateChange={setBodyTemplate}
         onAutoSaveChange={setAutoSave}
+        vadSettings={vadSettings}
+        onSilenceThresholdChange={setSilenceThreshold}
+        onSilenceDurationMsChange={setSilenceDurationMs}
+        onMaxSegmentMsChange={setMaxSegmentMs}
+        onMinSegmentMsChange={setMinSegmentMs}
+        onResetVADDefaults={resetVADDefaults}
       />
     </div>
   );

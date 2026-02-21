@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import * as https from 'node:https';
+import { downloadFile, type DownloadProgress } from './download-utils';
 
 const BASE_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/';
 
@@ -10,12 +10,10 @@ interface ModelDefinition {
   fileName: string;
   sizeMB: number;
   label: string;
-}
-
-interface DownloadProgress {
-  percent: number;
-  transferredBytes: number;
-  totalBytes: number;
+  /** SHA-256 of the model file from the upstream repository.
+   *  Leave undefined to skip integrity check (e.g. during development).
+   *  Obtain from: https://huggingface.co/ggerganov/whisper.cpp/tree/main */
+  sha256?: string;
 }
 
 const MODEL_CATALOG: Record<string, ModelDefinition> = {
@@ -53,70 +51,11 @@ export function downloadModel(modelId: string, onProgress?: (p: DownloadProgress
   const model = MODEL_CATALOG[modelId];
   if (!model) return Promise.reject(new Error(`Unknown model: ${modelId}`));
 
-  return new Promise((resolve, reject) => {
-    const modelsDir = getModelsDir();
-    fs.mkdirSync(modelsDir, { recursive: true });
+  const modelsDir = getModelsDir();
+  fs.mkdirSync(modelsDir, { recursive: true });
 
-    const finalPath = getModelPath(modelId);
-    const tmpPath = finalPath + '.tmp';
+  const finalPath = getModelPath(modelId);
+  const url = BASE_URL + model.fileName;
 
-    const file = fs.createWriteStream(tmpPath);
-    const url = BASE_URL + model.fileName;
-
-    function doRequest(reqUrl: string): void {
-      https
-        .get(reqUrl, (response) => {
-          if (
-            response.statusCode !== undefined &&
-            response.statusCode >= 300 &&
-            response.statusCode < 400 &&
-            response.headers.location
-          ) {
-            doRequest(response.headers.location);
-            return;
-          }
-
-          if (response.statusCode !== 200) {
-            fs.unlinkSync(tmpPath);
-            reject(new Error(`Download failed with status ${response.statusCode}`));
-            return;
-          }
-
-          const totalBytes = parseInt(response.headers['content-length'] ?? '0', 10);
-          let transferredBytes = 0;
-
-          response.on('data', (chunk: Buffer) => {
-            transferredBytes += chunk.length;
-            file.write(chunk);
-            if (onProgress && totalBytes > 0) {
-              onProgress({
-                percent: Math.round((transferredBytes / totalBytes) * 100),
-                transferredBytes,
-                totalBytes,
-              });
-            }
-          });
-
-          response.on('end', () => {
-            file.end(() => {
-              fs.renameSync(tmpPath, finalPath);
-              resolve();
-            });
-          });
-
-          response.on('error', (err: Error) => {
-            file.close();
-            if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-            reject(err);
-          });
-        })
-        .on('error', (err: Error) => {
-          file.close();
-          if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-          reject(err);
-        });
-    }
-
-    doRequest(url);
-  });
+  return downloadFile(url, finalPath, model.sha256, onProgress);
 }

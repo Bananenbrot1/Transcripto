@@ -1,8 +1,8 @@
 import { app } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import * as https from 'node:https';
 import { spawnSync } from 'node:child_process';
+import { downloadFile, type DownloadProgress } from './download-utils';
 
 // Note: release tag URL has a typo "recongition" — this matches the actual GitHub URL
 const SEGMENTATION_URL =
@@ -15,11 +15,8 @@ const SEGMENTATION_DIR_NAME = 'sherpa-onnx-pyannote-segmentation-3-0';
 const EMBEDDING_FILE_NAME = '3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx';
 const TOTAL_SIZE_MB = 35;
 
-export interface DiarizationDownloadProgress {
+export interface DiarizationDownloadProgress extends DownloadProgress {
   phase: 'segmentation' | 'embedding' | 'extracting';
-  percent: number;
-  transferredBytes: number;
-  totalBytes: number;
 }
 
 export interface DiarizationModelStatus {
@@ -48,74 +45,6 @@ export function isDiarizationModelsDownloaded(): DiarizationModelStatus {
   };
 }
 
-function downloadFile(
-  url: string,
-  tmpPath: string,
-  finalPath: string,
-  onProgress?: (p: Omit<DiarizationDownloadProgress, 'phase'>) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(tmpPath);
-
-    function doRequest(reqUrl: string): void {
-      https
-        .get(reqUrl, (response) => {
-          if (
-            response.statusCode !== undefined &&
-            response.statusCode >= 300 &&
-            response.statusCode < 400 &&
-            response.headers.location
-          ) {
-            doRequest(response.headers.location);
-            return;
-          }
-
-          if (response.statusCode !== 200) {
-            file.close();
-            if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-            reject(new Error(`Download failed with status ${response.statusCode} for ${reqUrl}`));
-            return;
-          }
-
-          const totalBytes = parseInt(response.headers['content-length'] ?? '0', 10);
-          let transferredBytes = 0;
-
-          response.on('data', (chunk: Buffer) => {
-            transferredBytes += chunk.length;
-            file.write(chunk);
-            if (onProgress && totalBytes > 0) {
-              onProgress({
-                percent: Math.round((transferredBytes / totalBytes) * 100),
-                transferredBytes,
-                totalBytes,
-              });
-            }
-          });
-
-          response.on('end', () => {
-            file.end(() => {
-              fs.renameSync(tmpPath, finalPath);
-              resolve();
-            });
-          });
-
-          response.on('error', (err: Error) => {
-            file.close();
-            if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-            reject(err);
-          });
-        })
-        .on('error', (err: Error) => {
-          file.close();
-          if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-          reject(err);
-        });
-    }
-
-    doRequest(url);
-  });
-}
-
 export async function downloadDiarizationModels(
   onProgress?: (p: DiarizationDownloadProgress) => void,
 ): Promise<void> {
@@ -126,9 +55,8 @@ export async function downloadDiarizationModels(
 
   if (!status.segmentation) {
     const tarPath = path.join(dir, SEGMENTATION_DIR_NAME + '.tar.bz2');
-    const tmpTarPath = tarPath + '.tmp';
 
-    await downloadFile(SEGMENTATION_URL, tmpTarPath, tarPath, (p) => {
+    await downloadFile(SEGMENTATION_URL, tarPath, undefined, (p) => {
       onProgress?.({ phase: 'segmentation', ...p });
     });
 
@@ -142,9 +70,7 @@ export async function downloadDiarizationModels(
 
   if (!status.embedding) {
     const finalPath = getEmbeddingModelPath();
-    const tmpPath = finalPath + '.tmp';
-
-    await downloadFile(EMBEDDING_URL, tmpPath, finalPath, (p) => {
+    await downloadFile(EMBEDDING_URL, finalPath, undefined, (p) => {
       onProgress?.({ phase: 'embedding', ...p });
     });
   }

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useAudioCapture } from './use-audio-capture';
+import type { VADOptions } from '@/lib/vad';
 import type {
   AudioSource,
   RecordingState,
@@ -10,9 +11,10 @@ export type DiarizationState = 'idle' | 'models-missing' | 'available' | 'proces
 
 interface UseTranscriptionOptions {
   language: string;
+  vadOptions?: VADOptions;
 }
 
-export function useTranscription({ language }: UseTranscriptionOptions) {
+export function useTranscription({ language, vadOptions }: UseTranscriptionOptions) {
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [micRMS, setMicRMS] = useState(0);
@@ -122,7 +124,7 @@ export function useTranscription({ language }: UseTranscriptionOptions) {
   const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute, getFullAudioBuffer } = useAudioCapture({
     onSpeechEnd,
     onRMS,
-  });
+  }, vadOptions);
 
   const startRecording = useCallback(async () => {
     setRecordingState('recording');
