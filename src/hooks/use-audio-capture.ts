@@ -39,8 +39,15 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
     const next = !micMutedRef.current;
     micMutedRef.current = next;
     setIsMicMuted(next);
-    if (next && micPipeline.current) {
-      micPipeline.current.vad.flush();
+    if (micPipeline.current) {
+      // Mute at the track level — the browser fills audio frames with silence,
+      // which is more reliable than dropping packets in the message handler.
+      micPipeline.current.stream.getAudioTracks().forEach((track) => {
+        track.enabled = !next;
+      });
+      if (next) {
+        micPipeline.current.vad.flush();
+      }
     }
   }, []);
 
@@ -62,12 +69,13 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks) {
 
       workletNode.port.onmessage = (event) => {
         if (event.data.type === 'pcm') {
-          if (isMutedFn?.()) {
-            callbacksRef.current.onRMS(source, 0);
-            return;
+          const muted = isMutedFn?.() ?? false;
+          // Don't accumulate muted audio into the diarization buffer.
+          // The VAD still processes the (silent) samples so the RMS meter
+          // drops to zero naturally via the track-level mute.
+          if (!muted) {
+            audioAccumulator.current.push(new Float32Array(event.data.samples));
           }
-          // Accumulate raw 16kHz chunks for post-recording diarization (both mic and system)
-          audioAccumulator.current.push(new Float32Array(event.data.samples));
           vad.process(event.data.samples);
         }
       };
