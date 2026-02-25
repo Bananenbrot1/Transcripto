@@ -1,17 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Download, Mic, MicOff, Settings, FileText } from 'lucide-react';
+import { Mic, MicOff, Settings } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
 import { useVADSettings } from '@/hooks/use-vad-settings';
 import { applyTemplate, buildExportVariables } from '@/lib/format-export';
-import { LANGUAGES } from '@/lib/languages';
 import { ModelDownloadScreen } from '@/components/model-download-screen';
 import { ExportSettingsDialog } from '@/components/export-settings-dialog';
 import { RecordButton } from '@/components/record-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { AudioSourceIndicator } from '@/components/audio-source-indicator';
+import { AudioSourceIndicator, PermissionBanner } from '@/components/audio-source-indicator';
 import { TranscriptPanel } from '@/components/transcript-panel';
 import { DiarizationControls } from '@/components/diarization-controls';
 
@@ -57,21 +56,31 @@ export function App() {
     systemRMS,
     isMicMuted,
     diarizationState,
+    elapsedMs,
     speakerNames,
     startRecording,
     stopRecording,
     toggleMicMute,
     runDiarization,
     renameSpeaker,
+    dismissTranscript,
   } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings });
 
   const [title, setTitle] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showDebug, setShowDebug] = useState(false);
   const prevRecordingState = useRef(recordingState);
 
   const handleSave = useCallback(async () => {
-    if (!exportSettings.folder || segments.length === 0) return;
+    if (segments.length === 0) return;
+    let folder = exportSettings.folder;
+    if (!folder) {
+      const picked = await window.electronAPI.selectExportFolder();
+      if (!picked) return;
+      setFolder(picked);
+      folder = picked;
+    }
     setSaveStatus('saving');
     try {
       const vars = buildExportVariables(segments, title, recordingStartTime);
@@ -79,7 +88,7 @@ export function App() {
       const content = applyTemplate(exportSettings.bodyTemplate, vars);
 
       const result = await window.electronAPI.saveMarkdown(
-        exportSettings.folder,
+        folder,
         filename,
         content,
       );
@@ -96,7 +105,7 @@ export function App() {
     } finally {
       setTimeout(() => setSaveStatus('idle'), 3000);
     }
-  }, [exportSettings, segments, title, recordingStartTime]);
+  }, [exportSettings, segments, title, recordingStartTime, setFolder]);
 
   // Auto-save when recording stops
   useEffect(() => {
@@ -111,6 +120,14 @@ export function App() {
     }
     prevRecordingState.current = recordingState;
   }, [recordingState, exportSettings.autoSave, exportSettings.folder, segments, handleSave]);
+
+  const handleDismiss = useCallback(() => {
+    if (window.confirm('Discard this transcript?')) {
+      dismissTranscript();
+      setTitle('');
+      setSaveStatus('idle');
+    }
+  }, [dismissTranscript]);
 
   if (!status.whisperReady) {
     return (
@@ -129,35 +146,27 @@ export function App() {
   }
 
   const currentModel = models.find((m) => m.id === selectedModel);
-  const canSave = segments.length > 0 && !!exportSettings.folder;
+  const showPostRecordingBar = recordingState === 'idle' && segments.length > 0;
+  const showPermissionBannerInMain = isCapturing && (systemAudioStatus === 'no-permission' || systemAudioStatus === 'failed');
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
-      <header className="border-b px-6 py-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight">Transcripto</h1>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={changeModel}
-              title="Change model"
-              disabled={isCapturing}
-            >
-              <Settings className="size-4" />
-              {currentModel ? currentModel.label.split(' — ')[0].split(' (')[0] : selectedModel}
-            </Button>
-            <select
-              value={selectedLanguage}
-              onChange={(e) => setSelectedLanguage(e.target.value)}
-              disabled={isCapturing}
-              className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50"
-              title="Transcription language"
-            >
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>{l.label}</option>
-              ))}
-            </select>
+      <header className="border-b px-6 py-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold tracking-tight shrink-0">Transcripto</h1>
+
+          <div className="flex-1 max-w-xs">
+            <AudioSourceIndicator
+              micRMS={micRMS}
+              systemRMS={systemRMS}
+              isCapturing={isCapturing}
+              systemAudioStatus={systemAudioStatus}
+              isMicMuted={isMicMuted}
+              showPermissionBanner={false}
+            />
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
             {isCapturing && (
               <Button
                 variant={isMicMuted ? 'destructive' : 'outline'}
@@ -168,6 +177,14 @@ export function App() {
                 {isMicMuted ? 'Mic Muted' : 'Mute Mic'}
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setSettingsOpen(true)}
+              title="Settings"
+            >
+              <Settings className="size-4" />
+            </Button>
             <RecordButton
               recordingState={recordingState}
               onStart={startRecording}
@@ -175,63 +192,56 @@ export function App() {
             />
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <AudioSourceIndicator
-            micRMS={micRMS}
-            systemRMS={systemRMS}
-            isCapturing={isCapturing}
-            systemAudioStatus={systemAudioStatus}
-            isMicMuted={isMicMuted}
-          />
-          <div className="ml-auto flex items-center gap-2">
-            {saveStatus === 'saved' && (
-              <span className="text-xs text-green-600 font-medium">Saved!</span>
-            )}
-            {saveStatus === 'error' && (
-              <span className="text-xs text-destructive font-medium">Save failed</span>
-            )}
-            {segments.length > 0 && (
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Transcript title..."
-                className="h-7 w-48 text-xs"
-              />
-            )}
-            <Button
-              variant="outline"
-              size="icon-xs"
-              onClick={handleSave}
-              disabled={!canSave || saveStatus === 'saving'}
-              title={!exportSettings.folder ? 'Configure output folder in Export Settings first' : 'Save as Markdown'}
-            >
-              <Download className="size-3" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-xs"
-              onClick={() => setSettingsOpen(true)}
-              title="Export settings"
-            >
-              <FileText className="size-3" />
-            </Button>
-          </div>
-        </div>
       </header>
+
       <main className="flex-1 overflow-hidden flex flex-col px-6 py-4 gap-3">
+        {showPermissionBannerInMain && <PermissionBanner />}
         <TranscriptPanel segments={segments} speakerNames={speakerNames} onRenameSpeaker={renameSpeaker} />
-        {recordingState === 'idle' && segments.length > 0 && (
-          <div className="shrink-0 pb-1">
-            <DiarizationControls diarizationState={diarizationState} onAnalyze={runDiarization} />
+        {showPostRecordingBar && (
+          <div className="shrink-0 flex items-center gap-2 pb-1">
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Transcript title..."
+              className="h-8 flex-1 max-w-xs text-sm"
+            />
+            <DiarizationControls diarizationState={diarizationState} onAnalyze={runDiarization} elapsedMs={elapsedMs} />
+            <div className="ml-auto flex items-center gap-2">
+              {saveStatus === 'saved' && (
+                <span className="text-xs text-green-600 font-medium">Saved!</span>
+              )}
+              {saveStatus === 'error' && (
+                <span className="text-xs text-destructive font-medium">Save failed</span>
+              )}
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={saveStatus === 'saving'}
+              >
+                {saveStatus === 'saving' ? 'Saving…' : 'Save'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDismiss}
+              >
+                Dismiss
+              </Button>
+            </div>
           </div>
         )}
       </main>
-      {debugInfo.length > 0 && (
+
+      {showDebug && (
         <footer className="border-t px-6 py-3 max-h-40 overflow-y-auto">
           <p className="text-xs font-medium text-muted-foreground mb-1">Debug</p>
-          {debugInfo.map((line, i) => (
-            <p key={i} className="text-xs font-mono text-muted-foreground">{line}</p>
-          ))}
+          {debugInfo.length > 0 ? (
+            debugInfo.map((line, i) => (
+              <p key={i} className="text-xs font-mono text-muted-foreground">{line}</p>
+            ))
+          ) : (
+            <p className="text-xs font-mono text-muted-foreground italic">No debug info yet — start a recording.</p>
+          )}
         </footer>
       )}
 
@@ -249,6 +259,13 @@ export function App() {
         onMaxSegmentMsChange={setMaxSegmentMs}
         onMinSegmentMsChange={setMinSegmentMs}
         onResetVADDefaults={resetVADDefaults}
+        currentModel={currentModel}
+        selectedLanguage={selectedLanguage}
+        onSelectLanguage={setSelectedLanguage}
+        onChangeModel={() => { setSettingsOpen(false); changeModel(); }}
+        isCapturing={isCapturing}
+        showDebug={showDebug}
+        onShowDebugChange={setShowDebug}
       />
     </div>
   );

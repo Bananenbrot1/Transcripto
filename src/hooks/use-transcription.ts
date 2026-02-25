@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useAudioCapture } from './use-audio-capture';
+import { useSessionPersistence, loadSession, clearSession } from './use-session-persistence';
+import { useDiarization } from './use-diarization';
 import type { VADOptions } from '@/lib/vad';
 import type {
   AudioSource,
@@ -7,7 +9,7 @@ import type {
   TranscriptSegment,
 } from '@/types/transcription';
 
-export type DiarizationState = 'idle' | 'models-missing' | 'available' | 'processing' | 'done' | 'error';
+export type { DiarizationState } from './use-diarization';
 
 interface UseTranscriptionOptions {
   language: string;
@@ -15,13 +17,13 @@ interface UseTranscriptionOptions {
 }
 
 export function useTranscription({ language, vadOptions }: UseTranscriptionOptions) {
-  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const prior = loadSession();
+  const [segments, setSegments] = useState<TranscriptSegment[]>(prior?.segments ?? []);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [micRMS, setMicRMS] = useState(0);
   const [systemRMS, setSystemRMS] = useState(0);
-  const [recordingStartTime, setRecordingStartTime] = useState(0);
-  const [diarizationState, setDiarizationState] = useState<DiarizationState>('idle');
-  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
+  const [recordingStartTime, setRecordingStartTime] = useState(prior?.recordingStartTime ?? 0);
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>(prior?.speakerNames ?? {});
   const pendingRef = useRef(0);
   const segmentCounterRef = useRef(0);
   const systemSpeakerRef = useRef(1);
@@ -121,12 +123,18 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     }
   }, []);
 
-  const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute, getFullAudioBuffer } = useAudioCapture({
+  const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute } = useAudioCapture({
     onSpeechEnd,
     onRMS,
   }, vadOptions);
 
+  const { diarizationState, elapsedMs, checkModels, runDiarization } = useDiarization(
+    recordingStartTimeRef,
+    setSegments,
+  );
+
   const startRecording = useCallback(async () => {
+    clearSession();
     setRecordingState('recording');
     const now = Date.now();
     setRecordingStartTime(now);
@@ -134,7 +142,6 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     segmentCounterRef.current = 0;
     systemSpeakerRef.current = 1;
     setSegments([]);
-    setDiarizationState('idle');
     setSpeakerNames({});
     try {
       await startCapture();
@@ -155,48 +162,23 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     }
 
     setRecordingState('idle');
-
-    // Check if diarization models are available
-    try {
-      const status = await window.electronAPI.checkDiarizationModels();
-      const modelsReady = status.segmentation && status.embedding;
-      setDiarizationState(modelsReady ? 'available' : 'models-missing');
-    } catch (err) {
-      console.error('Failed to check diarization models:', err);
-      setDiarizationState('models-missing');
-    }
-  }, [stopCapture]);
-
-  const runDiarization = useCallback(async () => {
-    setDiarizationState('processing');
-    try {
-      await window.electronAPI.initializeDiarization();
-      const buffer = getFullAudioBuffer();
-      const diarSegments = await window.electronAPI.diarize(buffer);
-
-      const recStart = recordingStartTimeRef.current;
-      setSegments((prev) =>
-        prev.map((seg) => {
-          // Use speechStartMs (when VAD detected speech onset) rather than
-          // timestamp (when VAD emitted the segment after the silence gap).
-          // This gives a much more accurate offset into the diarization timeline.
-          const relSec = (seg.speechStartMs - recStart) / 1000;
-          const match = diarSegments.find((d) => relSec >= d.start && relSec <= d.end);
-          if (!match) return seg;
-          return { ...seg, speaker: match.speaker, speakerId: match.speaker };
-        }),
-      );
-
-      setDiarizationState('done');
-    } catch (err) {
-      console.error('Diarization failed:', err);
-      setDiarizationState('error');
-    }
-  }, [getFullAudioBuffer]);
+    await checkModels();
+  }, [stopCapture, checkModels]);
 
   const renameSpeaker = useCallback((speakerId: string, name: string) => {
     setSpeakerNames((prev) => ({ ...prev, [speakerId]: name }));
   }, []);
+
+  const dismissTranscript = useCallback(() => {
+    clearSession();
+    setSegments([]);
+    setSpeakerNames({});
+    setRecordingStartTime(0);
+    recordingStartTimeRef.current = 0;
+    window.electronAPI.cleanupAudioRecording();
+  }, []);
+
+  useSessionPersistence(segments, speakerNames, recordingStartTime, recordingState !== 'idle');
 
   return {
     segments,
@@ -209,11 +191,13 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     systemRMS,
     isMicMuted,
     diarizationState,
+    elapsedMs,
     speakerNames,
     startRecording,
     stopRecording,
     toggleMicMute,
     runDiarization,
     renameSpeaker,
+    dismissTranscript,
   };
 }

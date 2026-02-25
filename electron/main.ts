@@ -5,6 +5,7 @@ import * as whisperService from './services/whisper-service';
 import * as markdownExport from './services/markdown-export';
 import * as diarizationModelManager from './services/diarization-model-manager';
 import * as diarizationService from './services/diarization-service';
+import * as audioFileService from './services/audio-file-service';
 
 const isDev = !app.isPackaged;
 
@@ -103,15 +104,41 @@ function registerIpcHandlers(): void {
     });
   });
 
-  ipcMain.handle('initialize-diarization', async () => {
-    diarizationService.initialize(
-      diarizationModelManager.getSegmentationModelPath(),
-      diarizationModelManager.getEmbeddingModelPath(),
-    );
+  ipcMain.handle('open-audio-recording', () => {
+    audioFileService.openRecording();
   });
 
-  ipcMain.handle('diarize', async (_event, audioBuffer: ArrayBuffer) => {
-    return await diarizationService.diarize(audioBuffer);
+  ipcMain.on('write-audio-chunk', (_event, source: 'mic' | 'sys', samples: ArrayBuffer) => {
+    audioFileService.appendChunk(source, Buffer.from(samples));
+  });
+
+  ipcMain.handle('close-audio-recording', () => {
+    return audioFileService.closeRecording();
+  });
+
+  ipcMain.handle('cleanup-audio-recording', () => {
+    audioFileService.cleanup();
+  });
+
+  ipcMain.handle('diarize', async (event, numSpeakers: number = -1) => {
+    const start = Date.now();
+    const interval = setInterval(() => {
+      event.sender.send('diarization-progress', { elapsedMs: Date.now() - start });
+    }, 1000);
+    try {
+      const { micPath, sysPath } = audioFileService.getPaths();
+      const raw = await diarizationService.diarizeFromFile(
+        micPath,
+        sysPath,
+        diarizationModelManager.getSegmentationModelPath(),
+        diarizationModelManager.getEmbeddingModelPath(),
+        numSpeakers,
+      );
+      return raw.map((seg) => ({ ...seg }));
+    } finally {
+      clearInterval(interval);
+      audioFileService.cleanup();
+    }
   });
 }
 
@@ -167,4 +194,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  audioFileService.cleanup();
 });

@@ -1,0 +1,89 @@
+import { app } from 'electron';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+const SESSION_DIR_NAME = 'transcripto-session';
+
+function getSessionDir(): string {
+  return path.join(app.getPath('temp'), SESSION_DIR_NAME);
+}
+
+let micPath = '';
+let sysPath = '';
+let micStream: fs.WriteStream | null = null;
+let sysStream: fs.WriteStream | null = null;
+
+export function cleanup(): void {
+  // Close any open streams first
+  micStream?.destroy();
+  sysStream?.destroy();
+  micStream = null;
+  sysStream = null;
+
+  for (const p of [micPath, sysPath]) {
+    if (p && fs.existsSync(p)) {
+      try {
+        fs.unlinkSync(p);
+      } catch (err) {
+        console.warn(`[audio-file-service] cleanup: failed to delete ${p}:`, err);
+      }
+    }
+  }
+  micPath = '';
+  sysPath = '';
+}
+
+export function openRecording(): void {
+  cleanup();
+
+  const dir = getSessionDir();
+  fs.mkdirSync(dir, { recursive: true });
+
+  micPath = path.join(dir, 'mic-session.f32');
+  sysPath = path.join(dir, 'sys-session.f32');
+
+  micStream = fs.createWriteStream(micPath);
+  sysStream = fs.createWriteStream(sysPath);
+}
+
+export function appendChunk(source: 'mic' | 'sys', buf: Buffer): void {
+  const stream = source === 'mic' ? micStream : sysStream;
+  if (stream && !stream.destroyed) {
+    stream.write(buf);
+  }
+}
+
+export function closeRecording(): Promise<{ micPath: string; sysPath: string }> {
+  return new Promise((resolve, reject) => {
+    let pending = 0;
+    let error: Error | null = null;
+
+    const done = () => {
+      pending--;
+      if (pending === 0) {
+        micStream = null;
+        sysStream = null;
+        if (error) reject(error);
+        else resolve({ micPath, sysPath });
+      }
+    };
+
+    const streams = [micStream, sysStream].filter(Boolean) as fs.WriteStream[];
+    if (streams.length === 0) {
+      resolve({ micPath, sysPath });
+      return;
+    }
+
+    pending = streams.length;
+    for (const stream of streams) {
+      stream.end((err?: Error | null) => {
+        if (err) error = err;
+        done();
+      });
+    }
+  });
+}
+
+export function getPaths(): { micPath: string; sysPath: string } {
+  return { micPath, sysPath };
+}

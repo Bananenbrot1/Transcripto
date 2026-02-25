@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress } from './ipc-types';
 
-contextBridge.exposeInMainWorld('electronAPI', {
+// Typed against ElectronAPI so the compiler verifies method presence and signatures.
+const api: ElectronAPI = {
   getAvailableModels: () => ipcRenderer.invoke('get-available-models'),
 
   checkModelStatus: (modelId: string) => ipcRenderer.invoke('check-model-status', modelId),
@@ -9,15 +11,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   downloadModel: (modelId: string) => ipcRenderer.invoke('download-model', modelId),
 
-  onDownloadProgress: (callback: (progress: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, progress: unknown) => callback(progress);
+  onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: DownloadProgress) => callback(progress);
     ipcRenderer.on('download-progress', handler);
     return () => ipcRenderer.removeListener('download-progress', handler);
   },
 
   initializeWhisper: (modelId: string) => ipcRenderer.invoke('initialize-whisper', modelId),
 
-  transcribe: (source: string, audioBuffer: ArrayBuffer, language: string) =>
+  transcribe: (source: 'mic' | 'system', audioBuffer: ArrayBuffer, language: string) =>
     ipcRenderer.invoke('transcribe', source, audioBuffer, language),
 
   releaseWhisper: () => ipcRenderer.invoke('release-whisper'),
@@ -39,13 +41,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   downloadDiarizationModels: () => ipcRenderer.invoke('download-diarization-models'),
 
-  onDiarizationDownloadProgress: (callback: (progress: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, progress: unknown) => callback(progress);
+  onDiarizationDownloadProgress: (callback: (progress: DiarizationDownloadProgress) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: DiarizationDownloadProgress) => callback(progress);
     ipcRenderer.on('diarization-download-progress', handler);
     return () => ipcRenderer.removeListener('diarization-download-progress', handler);
   },
 
-  initializeDiarization: () => ipcRenderer.invoke('initialize-diarization'),
+  openAudioRecording: () => ipcRenderer.invoke('open-audio-recording'),
 
-  diarize: (audioBuffer: ArrayBuffer) => ipcRenderer.invoke('diarize', audioBuffer),
-});
+  writeAudioChunk: (source: 'mic' | 'sys', samples: ArrayBuffer) =>
+    ipcRenderer.send('write-audio-chunk', source, samples),
+
+  closeAudioRecording: () => ipcRenderer.invoke('close-audio-recording'),
+
+  cleanupAudioRecording: () => ipcRenderer.invoke('cleanup-audio-recording'),
+
+  onDiarizationProgress: (callback: (p: { elapsedMs: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, p: { elapsedMs: number }) => callback(p);
+    ipcRenderer.on('diarization-progress', handler);
+    return () => ipcRenderer.removeListener('diarization-progress', handler);
+  },
+
+  diarize: (numSpeakers?: number) => ipcRenderer.invoke('diarize', numSpeakers),
+};
+
+contextBridge.exposeInMainWorld('electronAPI', api);

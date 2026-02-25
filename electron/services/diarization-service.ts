@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+import { Worker } from 'node:worker_threads';
 import type * as SherpaOnnxType from 'sherpa-onnx-node';
 
 // Lazy-loaded on first initialize() call so a load failure doesn't crash the
@@ -52,4 +54,42 @@ export async function diarize(audioBuffer: ArrayBuffer): Promise<DiarizedSegment
 
 export function release(): void {
   diarizer = null;
+}
+
+// __dirname = dist-electron/services/ at runtime
+const WORKER_PATH = path.join(__dirname, '..', 'workers', 'diarization-worker.js');
+
+export function diarizeFromFile(
+  micPath: string,
+  sysPath: string,
+  segModelPath: string,
+  embModelPath: string,
+  numSpeakers = -1,
+): Promise<DiarizedSegment[]> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(WORKER_PATH, {
+      workerData: {
+        micPath,
+        sysPath,
+        segmentationModelPath: segModelPath,
+        embeddingModelPath: embModelPath,
+        numSpeakers,
+      },
+    });
+
+    worker.on('message', (msg: { type: string; segments?: DiarizedSegment[]; message?: string }) => {
+      if (msg.type === 'result') {
+        resolve(msg.segments ?? []);
+      } else if (msg.type === 'error') {
+        reject(new Error(msg.message ?? 'Diarization worker error'));
+      }
+    });
+
+    worker.on('error', (err) => reject(err));
+    worker.on('exit', (code) => {
+      if (code !== 0) {
+        reject(new Error(`Diarization worker exited with code ${code}`));
+      }
+    });
+  });
 }
