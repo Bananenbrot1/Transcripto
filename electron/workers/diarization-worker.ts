@@ -20,10 +20,12 @@ function readF32File(filePath: string, out: Float32Array, offset: number): void 
     do {
       bytesRead = fs.readSync(fd, buf, 0, READ_CHUNK_BYTES, pos);
       if (bytesRead === 0) break;
-      // Interpret the bytes as Float32 samples and copy into `out`
-      const samples = new Float32Array(buf.buffer, buf.byteOffset, bytesRead / 4);
+      // Align to 4-byte boundary (Float32 samples)
+      const alignedBytes = bytesRead - (bytesRead % 4);
+      if (alignedBytes === 0) break;
+      const samples = new Float32Array(buf.buffer, buf.byteOffset, alignedBytes / 4);
       out.set(samples, offset + pos / 4);
-      pos += bytesRead;
+      pos += alignedBytes;
     } while (bytesRead === READ_CHUNK_BYTES);
   } finally {
     fs.closeSync(fd);
@@ -68,12 +70,15 @@ async function run(): Promise<void> {
       do {
         bytesRead = fs.readSync(fd, buf, 0, READ_CHUNK_BYTES, pos);
         if (bytesRead === 0) break;
-        const samples = new Float32Array(buf.buffer, buf.byteOffset, bytesRead / 4);
+        // Align to 4-byte boundary (Float32 samples)
+        const alignedBytes = bytesRead - (bytesRead % 4);
+        if (alignedBytes === 0) break;
+        const samples = new Float32Array(buf.buffer, buf.byteOffset, alignedBytes / 4);
         const sampleOffset = pos / 4;
         for (let i = 0; i < samples.length; i++) {
           mixed[sampleOffset + i] = clamp(mixed[sampleOffset + i] + samples[i]);
         }
-        pos += bytesRead;
+        pos += alignedBytes;
       } while (bytesRead === READ_CHUNK_BYTES);
     } finally {
       fs.closeSync(fd);
@@ -93,10 +98,9 @@ async function run(): Promise<void> {
     clustering: {
       numClusters: numSpeakers,
       // Only used when numClusters == -1 (auto-detect).
-      // Lower value → easier to merge embeddings → fewer false splits.
-      threshold: 0.3,
+      threshold: 0.5,
     },
-    minDurationOn: 0.3,
+    minDurationOn: 0.2,
     minDurationOff: 0.5,
   });
 

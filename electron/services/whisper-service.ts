@@ -157,7 +157,15 @@ export function transcribe(
   }
 
   return prevHead
-    .then(() => doTranscribe(source, audioBuffer, language, releaseGate))
+    .then(() => {
+      // Context may have been released while we were queued
+      const ctx = source === 'mic' ? micContext : sysContext;
+      if (!ctx) {
+        releaseGate();
+        throw new Error('Whisper released while segment was queued');
+      }
+      return doTranscribe(source, audioBuffer, language, releaseGate);
+    })
     .finally(() => {
       if (source === 'mic') micQueueDepth--;
       else sysQueueDepth--;

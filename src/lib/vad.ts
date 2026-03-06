@@ -22,9 +22,11 @@ export class SimpleVAD {
   private isSpeaking = false;
   private silenceStartTime: number | null = null;
   private segmentStartTime: number | null = null;
+  private isGated = false;
 
   private onSpeechEnd: ((audio: Float32Array, speechStartMs: number) => void) | null = null;
   private onRMS: ((rms: number) => void) | null = null;
+  private onSpeechState: ((isSpeaking: boolean) => void) | null = null;
 
   constructor(options: VADOptions = {}) {
     this.silenceThreshold = options.silenceThreshold ?? 0.01;
@@ -41,6 +43,23 @@ export class SimpleVAD {
     this.onRMS = cb;
   }
 
+  /** Fires when speech state transitions between active and inactive. */
+  setSpeechStateCallback(cb: (isSpeaking: boolean) => void) {
+    this.onSpeechState = cb;
+  }
+
+  /**
+   * Gate the mic VAD to suppress echo from system audio.
+   * When gated=true: speech segments are discarded instead of emitted.
+   * When gated=false: accumulated buffer is discarded (echo tail cleanup) and VAD resets.
+   */
+  setGated(gated: boolean) {
+    this.isGated = gated;
+    if (!gated) {
+      this.reset();
+    }
+  }
+
   /** Feed 16kHz mono Float32 PCM samples */
   process(samples: Float32Array) {
     const rms = calculateRMS(samples);
@@ -53,6 +72,7 @@ export class SimpleVAD {
       if (!this.isSpeaking) {
         this.isSpeaking = true;
         this.segmentStartTime = now;
+        this.onSpeechState?.(true);
       }
       this.silenceStartTime = null;
       this.chunks.push(new Float32Array(samples));
@@ -90,17 +110,20 @@ export class SimpleVAD {
   }
 
   private emitSegment() {
-    const durationMs = (this.totalSamples / 16000) * 1000;
-    if (durationMs >= this.minSegmentMs && this.onSpeechEnd) {
-      const audio = concatFloat32Arrays(this.chunks);
-      // Pass the wall-clock time when speech began so callers can align
-      // diarization output (which uses seconds from audio start) correctly.
-      this.onSpeechEnd(audio, this.segmentStartTime ?? Date.now());
+    if (!this.isGated) {
+      const durationMs = (this.totalSamples / 16000) * 1000;
+      if (durationMs >= this.minSegmentMs && this.onSpeechEnd) {
+        const audio = concatFloat32Arrays(this.chunks);
+        // Pass the wall-clock time when speech began so callers can align
+        // diarization output (which uses seconds from audio start) correctly.
+        this.onSpeechEnd(audio, this.segmentStartTime ?? Date.now());
+      }
     }
     this.reset();
   }
 
   private reset() {
+    if (this.isSpeaking) this.onSpeechState?.(false);
     this.chunks = [];
     this.totalSamples = 0;
     this.isSpeaking = false;

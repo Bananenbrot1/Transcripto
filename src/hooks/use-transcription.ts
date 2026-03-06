@@ -17,14 +17,14 @@ interface UseTranscriptionOptions {
 }
 
 export function useTranscription({ language, vadOptions }: UseTranscriptionOptions) {
-  const prior = loadSession();
-  const [segments, setSegments] = useState<TranscriptSegment[]>(prior?.segments ?? []);
+  const [segments, setSegments] = useState<TranscriptSegment[]>(() => loadSession()?.segments ?? []);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [micRMS, setMicRMS] = useState(0);
   const [systemRMS, setSystemRMS] = useState(0);
-  const [recordingStartTime, setRecordingStartTime] = useState(prior?.recordingStartTime ?? 0);
-  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>(prior?.speakerNames ?? {});
+  const [recordingStartTime, setRecordingStartTime] = useState(() => loadSession()?.recordingStartTime ?? 0);
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>(() => loadSession()?.speakerNames ?? {});
   const pendingRef = useRef(0);
+  const drainResolveRef = useRef<(() => void) | null>(null);
   const segmentCounterRef = useRef(0);
   const systemSpeakerRef = useRef(1);
   const languageRef = useRef(language);
@@ -53,7 +53,7 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
               startTime: result.segments[0]?.t0 ?? 0,
               endTime: result.segments[result.segments.length - 1]?.t1 ?? 0,
             };
-            setSegments((prev) => [...prev, newSegment].sort((a, b) => a.timestamp - b.timestamp));
+            setSegments((prev) => [...prev, newSegment]);
           } else {
             // System audio: split into separate segments at speaker turns
             const newSegments: TranscriptSegment[] = [];
@@ -101,7 +101,7 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
             }
 
             if (newSegments.length > 0) {
-              setSegments((prev) => [...prev, ...newSegments].sort((a, b) => a.timestamp - b.timestamp));
+              setSegments((prev) => [...prev, ...newSegments]);
             }
           }
         }
@@ -110,6 +110,10 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
       } finally {
         pendingRef.current--;
         console.log(`[transcription] onSpeechEnd done: source=${source}, pending=${pendingRef.current}`);
+        if (pendingRef.current === 0 && drainResolveRef.current) {
+          drainResolveRef.current();
+          drainResolveRef.current = null;
+        }
       }
     },
     [],
@@ -155,10 +159,13 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     setRecordingState('stopping');
     await stopCapture();
 
-    // Wait for pending transcriptions to finish (max 10s)
-    const start = Date.now();
-    while (pendingRef.current > 0 && Date.now() - start < 10000) {
-      await new Promise((r) => setTimeout(r, 200));
+    // Wait for pending transcriptions to drain (max 10s)
+    if (pendingRef.current > 0) {
+      await Promise.race([
+        new Promise<void>((resolve) => { drainResolveRef.current = resolve; }),
+        new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+      ]);
+      drainResolveRef.current = null;
     }
 
     setRecordingState('idle');

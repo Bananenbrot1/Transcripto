@@ -35,6 +35,10 @@
       "electron",
       "esbuild",
       "@fugood/whisper.node"
+    ],
+    "publicHoistPattern": [
+      "sherpa-onnx-darwin-arm64",
+      "@fugood/node-whisper-darwin-arm64"
     ]
   },
   "dependencies": {

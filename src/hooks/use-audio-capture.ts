@@ -10,6 +10,7 @@ interface AudioPipeline {
   audioContext: AudioContext;
   workletNode: AudioWorkletNode;
   vad: SimpleVAD;
+  onStateChange: () => void;
 }
 
 interface AudioCaptureCallbacks {
@@ -35,6 +36,12 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
   const micPendingRef = useRef<Float32Array[]>([]);
   const sysPendingRef = useRef<Float32Array[]>([]);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Hold-off timer for releasing mic gate after system audio speech ends
+  const micGateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // How long (ms) to keep the mic gated after system audio speech stops.
+  // Must comfortably exceed silenceDurationMs (800ms default) so the echo
+  // segment emits while still gated and gets discarded.
+  const MIC_GATE_HOLDOFF_MS = 1200;
 
   const log = useCallback((msg: string) => {
     console.log(`[audio-capture] ${msg}`);
@@ -96,8 +103,8 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
             const ipcSource = source === 'mic' ? 'mic' : 'sys';
             const pendingRef = ipcSource === 'mic' ? micPendingRef : sysPendingRef;
             pendingRef.current.push(new Float32Array(event.data.samples));
+            vad.process(event.data.samples);
           }
-          vad.process(event.data.samples);
         }
       };
 
@@ -107,13 +114,14 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
       workletNode.connect(silentGain);
       silentGain.connect(audioContext.destination);
 
-      audioContext.addEventListener('statechange', () => {
+      const onStateChange = () => {
         if (audioContext.state === 'suspended') {
           audioContext.resume().catch((err) => console.warn('[audio-capture] resume failed:', err));
         }
-      });
+      };
+      audioContext.addEventListener('statechange', onStateChange);
 
-      return { stream, audioContext, workletNode, vad };
+      return { stream, audioContext, workletNode, vad, onStateChange };
     },
     [],
   );
@@ -174,6 +182,28 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
           sysPipeline.current = await createPipeline(displayStream, 'system');
           setSystemAudioStatus('active');
           log('System audio pipeline created successfully');
+
+          // Cross-gate: when system audio speech is active, suppress the mic
+          // VAD so that speaker output picked up by the mic isn't transcribed.
+          const micVAD = micPipeline.current?.vad;
+          if (micVAD) {
+            sysPipeline.current.vad.setSpeechStateCallback((isSpeaking) => {
+              if (isSpeaking) {
+                if (micGateTimerRef.current !== null) {
+                  clearTimeout(micGateTimerRef.current);
+                  micGateTimerRef.current = null;
+                }
+                micVAD.setGated(true);
+              } else {
+                // Delay release so any echo tail still emits while gated
+                micGateTimerRef.current = setTimeout(() => {
+                  micVAD.setGated(false);
+                  micGateTimerRef.current = null;
+                }, MIC_GATE_HOLDOFF_MS);
+              }
+            });
+            log(`Mic cross-gate wired (holdoff=${MIC_GATE_HOLDOFF_MS}ms)`);
+          }
         } else if (audioTracks.length > 0 && audioTracks[0].readyState === 'ended') {
           log('Audio track exists but state=ended → missing "System Audio Recording" permission');
           setSystemAudioStatus('no-permission');
@@ -203,10 +233,16 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
       clearInterval(flushIntervalRef.current);
       flushIntervalRef.current = null;
     }
+    // Cancel any pending mic gate release
+    if (micGateTimerRef.current !== null) {
+      clearTimeout(micGateTimerRef.current);
+      micGateTimerRef.current = null;
+    }
 
     for (const pipeline of [micPipeline.current, sysPipeline.current]) {
       if (pipeline) {
         pipeline.vad.flush();
+        pipeline.audioContext.removeEventListener('statechange', pipeline.onStateChange);
         pipeline.stream.getTracks().forEach((track) => track.stop());
         await pipeline.audioContext.close();
       }
@@ -218,7 +254,7 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
     setIsCapturing(false);
     setSystemAudioStatus('inactive');
 
-    // Flush any remaining buffered chunks, then close the recording files
+    // Flush any remaining buffered audio chunks to disk, then close recording files
     flushSource('mic');
     flushSource('sys');
     await window.electronAPI.closeAudioRecording();

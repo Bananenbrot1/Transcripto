@@ -9,6 +9,7 @@ interface AudioSourceIndicatorProps {
   isCapturing: boolean;
   systemAudioStatus: SystemAudioStatus;
   isMicMuted: boolean;
+  showPermissionBanner?: boolean;
 }
 
 function LevelBar({ level, max = 0.3 }: { level: number; max?: number }) {
@@ -23,7 +24,7 @@ function LevelBar({ level, max = 0.3 }: { level: number; max?: number }) {
   );
 }
 
-function PermissionBanner() {
+export function PermissionBanner() {
   const [appName, setAppName] = useState<string>('');
 
   useEffect(() => {
@@ -68,25 +69,24 @@ export function AudioSourceIndicator({
   isCapturing,
   systemAudioStatus,
   isMicMuted,
+  showPermissionBanner = true,
 }: AudioSourceIndicatorProps) {
   if (!isCapturing) return null;
 
   const MicIcon = isMicMuted ? MicOff : Mic;
 
   return (
-    <div className="space-y-3">
-      <div className="flex gap-6 items-center">
-        <div className="flex items-center gap-2 flex-1">
-          <MicIcon className={`size-4 shrink-0 ${isMicMuted ? 'text-red-500' : 'text-muted-foreground'}`} />
-          <LevelBar level={isMicMuted ? 0 : micRMS} />
-        </div>
-        <div className="flex items-center gap-2 flex-1">
-          <Monitor className="size-4 text-muted-foreground shrink-0" />
-          <LevelBar level={systemRMS} />
-        </div>
+    <div className="flex gap-4 items-center flex-1">
+      <div className="flex items-center gap-2 flex-1">
+        <MicIcon className={`size-4 shrink-0 ${isMicMuted ? 'text-red-500' : 'text-muted-foreground'}`} />
+        <LevelBar level={isMicMuted ? 0 : micRMS} />
+      </div>
+      <div className="flex items-center gap-2 flex-1">
+        <Monitor className="size-4 text-muted-foreground shrink-0" />
+        <LevelBar level={systemRMS} />
       </div>
 
-      {(systemAudioStatus === 'no-permission' || systemAudioStatus === 'failed') && (
+      {showPermissionBanner && (systemAudioStatus === 'no-permission' || systemAudioStatus === 'failed') && (
         <PermissionBanner />
       )}
     </div>

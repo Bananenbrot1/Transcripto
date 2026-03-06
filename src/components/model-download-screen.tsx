@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, Loader2, AlertCircle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LANGUAGES } from '@/lib/languages';
@@ -50,9 +50,11 @@ export function ModelDownloadScreen({
   }
 
   // Reset initializing state on error so user can retry
-  if (status.error && initializing) {
-    setInitializing(false);
-  }
+  useEffect(() => {
+    if (status.error && initializing) {
+      setInitializing(false);
+    }
+  }, [status.error, initializing]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
