@@ -85,6 +85,11 @@ export function useModelStatus() {
     }
   }, [selectedModel]);
 
+  const deleteModel = useCallback(async (modelId: string) => {
+    await window.electronAPI.deleteModel(modelId);
+    await refreshDownloadedModels();
+  }, [refreshDownloadedModels]);
+
   const changeModel = useCallback(async () => {
     await window.electronAPI.releaseWhisper();
     setStatus((s) => ({ ...s, whisperReady: false, downloaded: false }));
@@ -100,6 +105,7 @@ export function useModelStatus() {
     setSelectedModel,
     setSelectedLanguage,
     downloadModel,
+    deleteModel,
     initializeWhisper,
     changeModel,
   };

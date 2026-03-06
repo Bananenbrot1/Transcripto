@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mic, MicOff, Settings } from 'lucide-react';
+import { Mic, MicOff, Settings, Moon, Sun, Pause, Play } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
@@ -10,6 +10,7 @@ import { ExportSettingsDialog } from '@/components/export-settings-dialog';
 import { RecordButton } from '@/components/record-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Toast } from '@/components/ui/toast';
 import { AudioSourceIndicator, PermissionBanner } from '@/components/audio-source-indicator';
 import { TranscriptPanel } from '@/components/transcript-panel';
 import { DiarizationControls } from '@/components/diarization-controls';
@@ -24,6 +25,7 @@ export function App() {
     setSelectedLanguage,
     downloadedModels,
     downloadModel,
+    deleteModel,
     initializeWhisper,
     changeModel,
   } = useModelStatus();
@@ -55,15 +57,18 @@ export function App() {
     micRMS,
     systemRMS,
     isMicMuted,
+    isPaused,
     diarizationState,
     elapsedMs,
     speakerNames,
     startRecording,
     stopRecording,
     toggleMicMute,
+    togglePause,
     runDiarization,
     renameSpeaker,
     dismissTranscript,
+    restoreTranscript,
   } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings });
 
   const [title, setTitle] = useState('');
@@ -71,6 +76,47 @@ export function App() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [showDebug, setShowDebug] = useState(false);
   const prevRecordingState = useRef(recordingState);
+
+  // Dark mode
+  const [darkMode, setDarkMode] = useState(() => {
+    const stored = localStorage.getItem('transcripto-dark-mode');
+    if (stored !== null) return stored === 'true';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+    localStorage.setItem('transcripto-dark-mode', String(darkMode));
+  }, [darkMode]);
+
+  // Recording timer (pauses correctly by tracking accumulated time)
+  const [elapsedRecording, setElapsedRecording] = useState(0);
+  const pausedAtRef = useRef(0);
+  const pauseOffsetRef = useRef(0);
+
+  useEffect(() => {
+    if (recordingState !== 'recording' || !recordingStartTime) {
+      setElapsedRecording(0);
+      pauseOffsetRef.current = 0;
+      pausedAtRef.current = 0;
+      return;
+    }
+    if (isPaused) {
+      pausedAtRef.current = Date.now();
+      return;
+    }
+    if (pausedAtRef.current > 0) {
+      pauseOffsetRef.current += Date.now() - pausedAtRef.current;
+      pausedAtRef.current = 0;
+    }
+    const tick = () => setElapsedRecording(Date.now() - recordingStartTime - pauseOffsetRef.current);
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [recordingState, recordingStartTime, isPaused]);
+
+  // Undo dismiss toast
+  const [dismissToast, setDismissToast] = useState<{ segments: typeof segments; speakerNames: typeof speakerNames; title: string } | null>(null);
 
   const handleSave = useCallback(async () => {
     if (segments.length === 0) return;
@@ -122,12 +168,11 @@ export function App() {
   }, [recordingState, exportSettings.autoSave, exportSettings.folder, segments, handleSave]);
 
   const handleDismiss = useCallback(() => {
-    if (window.confirm('Discard this transcript?')) {
-      dismissTranscript();
-      setTitle('');
-      setSaveStatus('idle');
-    }
-  }, [dismissTranscript]);
+    setDismissToast({ segments: [...segments], speakerNames: { ...speakerNames }, title });
+    dismissTranscript();
+    setTitle('');
+    setSaveStatus('idle');
+  }, [dismissTranscript, segments, speakerNames, title]);
 
   if (!status.whisperReady) {
     return (
@@ -144,6 +189,23 @@ export function App() {
       />
     );
   }
+
+  const handleUndoDismiss = useCallback(() => {
+    if (dismissToast) {
+      restoreTranscript(dismissToast.segments, dismissToast.speakerNames);
+      setTitle(dismissToast.title);
+      setDismissToast(null);
+    }
+  }, [dismissToast, restoreTranscript]);
+
+  const formatElapsed = (ms: number) => {
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  };
 
   const currentModel = models.find((m) => m.id === selectedModel);
   const showPostRecordingBar = recordingState === 'idle' && segments.length > 0;
@@ -167,16 +229,40 @@ export function App() {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            {isCapturing && (
-              <Button
-                variant={isMicMuted ? 'destructive' : 'outline'}
-                size="sm"
-                onClick={toggleMicMute}
-              >
-                {isMicMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-                {isMicMuted ? 'Mic Muted' : 'Mute Mic'}
-              </Button>
+            {recordingState === 'recording' && (
+              <span className={`text-sm font-mono font-medium tabular-nums ${isPaused ? 'text-muted-foreground' : 'text-destructive'}`}>
+                {isPaused ? 'Paused' : formatElapsed(elapsedRecording)}
+              </span>
             )}
+            {isCapturing && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={togglePause}
+                  title={isPaused ? 'Resume recording' : 'Pause recording'}
+                >
+                  {isPaused ? <Play className="size-4" /> : <Pause className="size-4" />}
+                  {isPaused ? 'Resume' : 'Pause'}
+                </Button>
+                <Button
+                  variant={isMicMuted ? 'destructive' : 'outline'}
+                  size="sm"
+                  onClick={toggleMicMute}
+                >
+                  {isMicMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+                  {isMicMuted ? 'Mic Muted' : 'Mute Mic'}
+                </Button>
+              </>
+            )}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setDarkMode((d) => !d)}
+              title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            </Button>
             <Button
               variant="outline"
               size="icon"
@@ -266,7 +352,18 @@ export function App() {
         isCapturing={isCapturing}
         showDebug={showDebug}
         onShowDebugChange={setShowDebug}
+        models={models}
+        downloadedModels={downloadedModels}
+        onDeleteModel={deleteModel}
       />
+
+      {dismissToast && (
+        <Toast
+          message="Transcript dismissed"
+          action={{ label: 'Undo', onClick: handleUndoDismiss }}
+          onClose={() => setDismissToast(null)}
+        />
+      )}
     </div>
   );
 }

@@ -127,7 +127,7 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     }
   }, []);
 
-  const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute } = useAudioCapture({
+  const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, isPaused, startCapture, stopCapture, toggleMicMute, togglePause } = useAudioCapture({
     onSpeechEnd,
     onRMS,
   }, vadOptions);
@@ -185,6 +185,11 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     window.electronAPI.cleanupAudioRecording();
   }, []);
 
+  const restoreTranscript = useCallback((restoredSegments: TranscriptSegment[], restoredSpeakerNames: Record<string, string>) => {
+    setSegments(restoredSegments);
+    setSpeakerNames(restoredSpeakerNames);
+  }, []);
+
   useSessionPersistence(segments, speakerNames, recordingStartTime, recordingState !== 'idle');
 
   return {
@@ -197,14 +202,17 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     micRMS,
     systemRMS,
     isMicMuted,
+    isPaused,
     diarizationState,
     elapsedMs,
     speakerNames,
     startRecording,
     stopRecording,
     toggleMicMute,
+    togglePause,
     runDiarization,
     renameSpeaker,
     dismissTranscript,
+    restoreTranscript,
   };
 }

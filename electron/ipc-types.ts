@@ -29,6 +29,7 @@ export interface ElectronAPI {
   checkModelStatus: (modelId: string) => Promise<{ downloaded: boolean }>;
   checkAllModelStatus: () => Promise<Record<string, boolean>>;
   downloadModel: (modelId: string) => Promise<void>;
+  deleteModel: (modelId: string) => Promise<void>;
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => () => void;
   initializeWhisper: (modelId: string) => Promise<void>;
   transcribe: (source: 'mic' | 'system', audioBuffer: ArrayBuffer, language: string) => Promise<TranscribeResult>;

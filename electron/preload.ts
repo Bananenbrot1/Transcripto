@@ -11,6 +11,8 @@ const api: ElectronAPI = {
 
   downloadModel: (modelId: string) => ipcRenderer.invoke('download-model', modelId),
 
+  deleteModel: (modelId: string) => ipcRenderer.invoke('delete-model', modelId),
+
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: DownloadProgress) => callback(progress);
     ipcRenderer.on('download-progress', handler);

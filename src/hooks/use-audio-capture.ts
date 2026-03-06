@@ -25,6 +25,8 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
   const [isCapturing, setIsCapturing] = useState(false);
   const [systemAudioStatus, setSystemAudioStatus] = useState<SystemAudioStatus>('inactive');
   const [isMicMuted, setIsMicMuted] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const isPausedRef = useRef(false);
   const micMutedRef = useRef(false);
   const micPipeline = useRef<AudioPipeline | null>(null);
   const sysPipeline = useRef<AudioPipeline | null>(null);
@@ -64,6 +66,21 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
 
   const flushDebugLog = useCallback(() => {
     setDebugInfo([...debugLogRef.current]);
+  }, []);
+
+  const togglePause = useCallback(() => {
+    const next = !isPausedRef.current;
+    isPausedRef.current = next;
+    setIsPaused(next);
+    if (micPipeline.current) {
+      micPipeline.current.stream.getAudioTracks().forEach((track) => {
+        track.enabled = next ? false : !micMutedRef.current;
+      });
+      if (next) micPipeline.current.vad.flush();
+    }
+    if (sysPipeline.current) {
+      if (next) sysPipeline.current.vad.flush();
+    }
   }, []);
 
   const toggleMicMute = useCallback(() => {
@@ -122,6 +139,7 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
 
       workletNode.port.onmessage = (event) => {
         if (event.data.type === 'pcm') {
+          if (isPausedRef.current) return;
           const muted = isMutedFn?.() ?? false;
           if (!muted) {
             const ipcSource = source === 'mic' ? 'mic' : 'sys';
@@ -286,7 +304,9 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
     micPipeline.current = null;
     sysPipeline.current = null;
     micMutedRef.current = false;
+    isPausedRef.current = false;
     setIsMicMuted(false);
+    setIsPaused(false);
     setIsCapturing(false);
     setSystemAudioStatus('inactive');
 
@@ -296,5 +316,5 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
     await window.electronAPI.closeAudioRecording();
   }, [flushSource]);
 
-  return { isCapturing, systemAudioStatus, debugInfo, isMicMuted, startCapture, stopCapture, toggleMicMute };
+  return { isCapturing, systemAudioStatus, debugInfo, isMicMuted, isPaused, startCapture, stopCapture, toggleMicMute, togglePause };
 }

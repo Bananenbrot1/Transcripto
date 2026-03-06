@@ -37,6 +37,13 @@ export function getAvailableModels(): ModelDefinition[] {
   return Object.values(MODEL_CATALOG);
 }
 
+export function deleteModel(modelId: string): void {
+  const modelPath = getModelPath(modelId);
+  if (fs.existsSync(modelPath)) {
+    fs.unlinkSync(modelPath);
+  }
+}
+
 export function downloadModel(modelId: string, onProgress?: (p: DownloadProgress) => void): Promise<void> {
   const model = MODEL_CATALOG[modelId];
   if (!model) return Promise.reject(new Error(`Unknown model: ${modelId}`));

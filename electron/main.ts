@@ -27,6 +27,10 @@ function registerIpcHandlers(): void {
     return result;
   });
 
+  ipcMain.handle('delete-model', (_event, modelId: string) => {
+    modelManager.deleteModel(modelId);
+  });
+
   ipcMain.handle('download-model', async (event, modelId: string) => {
     await modelManager.downloadModel(modelId, (progress) => {
       event.sender.send('download-progress', progress);

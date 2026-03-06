@@ -1,4 +1,4 @@
-import { FolderOpen, RotateCcw } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -37,6 +37,9 @@ interface ExportSettingsDialogProps {
   isCapturing: boolean;
   showDebug: boolean;
   onShowDebugChange: (v: boolean) => void;
+  models?: ModelDefinition[];
+  downloadedModels?: Record<string, boolean>;
+  onDeleteModel?: (modelId: string) => void;
 }
 
 export function ExportSettingsDialog({
@@ -60,6 +63,9 @@ export function ExportSettingsDialog({
   isCapturing,
   showDebug,
   onShowDebugChange,
+  models,
+  downloadedModels,
+  onDeleteModel,
 }: ExportSettingsDialogProps) {
   const handleBrowse = async () => {
     const folder = await window.electronAPI.selectExportFolder();
@@ -112,6 +118,32 @@ export function ExportSettingsDialog({
                 ))}
               </select>
             </div>
+
+            {models && downloadedModels && onDeleteModel && (
+              <div className="space-y-2">
+                <Label className="text-xs">Downloaded models</Label>
+                <div className="space-y-1">
+                  {models.filter((m) => downloadedModels[m.id]).map((m) => (
+                    <div key={m.id} className="flex items-center justify-between text-sm">
+                      <span>{m.label.split(' — ')[0].split(' (')[0]}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                        onClick={() => onDeleteModel(m.id)}
+                        disabled={isCapturing || m.id === currentModel?.id}
+                        title={m.id === currentModel?.id ? 'Cannot delete active model' : 'Delete model'}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  {models.filter((m) => downloadedModels[m.id]).length === 0 && (
+                    <p className="text-xs text-muted-foreground italic">No models downloaded</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="border-t pt-4 space-y-4">
