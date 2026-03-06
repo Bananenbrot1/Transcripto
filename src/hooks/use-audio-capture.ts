@@ -118,7 +118,7 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
   const createPipeline = useCallback(
     async (stream: MediaStream, source: AudioSource, isMutedFn?: () => boolean): Promise<AudioPipeline> => {
       const audioContext = new AudioContext({ sampleRate: 48000 });
-      await audioContext.audioWorklet.addModule('/pcm-worklet-processor.js');
+      await audioContext.audioWorklet.addModule('./pcm-worklet-processor.js');
 
       const sourceNode = audioContext.createMediaStreamSource(stream);
       const workletNode = new AudioWorkletNode(audioContext, 'pcm-worklet-processor');
