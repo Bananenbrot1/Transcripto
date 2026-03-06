@@ -34,6 +34,13 @@ export function ModelDownloadScreen({
   const currentModel = models.find((m) => m.id === selectedModel);
   const [initializing, setInitializing] = useState(false);
 
+  // Reset initializing state on error so user can retry
+  useEffect(() => {
+    if (status.error && initializing) {
+      setInitializing(false);
+    }
+  }, [status.error, initializing]);
+
   // Show loading screen while initializing
   if (initializing && !status.whisperReady && !status.error) {
     return (
@@ -48,13 +55,6 @@ export function ModelDownloadScreen({
       </div>
     );
   }
-
-  // Reset initializing state on error so user can retry
-  useEffect(() => {
-    if (status.error && initializing) {
-      setInitializing(false);
-    }
-  }, [status.error, initializing]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background text-foreground">

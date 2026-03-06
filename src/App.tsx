@@ -174,22 +174,6 @@ export function App() {
     setSaveStatus('idle');
   }, [dismissTranscript, segments, speakerNames, title]);
 
-  if (!status.whisperReady) {
-    return (
-      <ModelDownloadScreen
-        status={status}
-        models={models}
-        selectedModel={selectedModel}
-        selectedLanguage={selectedLanguage}
-        downloadedModels={downloadedModels}
-        onSelectModel={setSelectedModel}
-        onSelectLanguage={setSelectedLanguage}
-        onDownload={downloadModel}
-        onInitialize={initializeWhisper}
-      />
-    );
-  }
-
   const handleUndoDismiss = useCallback(() => {
     if (dismissToast) {
       restoreTranscript(dismissToast.segments, dismissToast.speakerNames);
@@ -206,6 +190,22 @@ export function App() {
     const pad = (n: number) => String(n).padStart(2, '0');
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
   };
+
+  if (!status.whisperReady) {
+    return (
+      <ModelDownloadScreen
+        status={status}
+        models={models}
+        selectedModel={selectedModel}
+        selectedLanguage={selectedLanguage}
+        downloadedModels={downloadedModels}
+        onSelectModel={setSelectedModel}
+        onSelectLanguage={setSelectedLanguage}
+        onDownload={downloadModel}
+        onInitialize={initializeWhisper}
+      />
+    );
+  }
 
   const currentModel = models.find((m) => m.id === selectedModel);
   const showPostRecordingBar = recordingState === 'idle' && segments.length > 0;
