@@ -5,3 +5,4 @@ dist-app/
 out/
 models/
 .DS_Store
+*.dmg
