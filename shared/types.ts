@@ -1,0 +1,70 @@
+/**
+ * Shared type definitions used by both the Electron main process and the
+ * renderer (React) process. This file is included in both tsconfig.json and
+ * tsconfig.electron.json so that types stay in sync across the IPC boundary.
+ */
+
+export type AudioSource = 'mic' | 'system';
+
+export type RecordingState = 'idle' | 'recording' | 'stopping';
+
+export interface TranscriptSegment {
+  id: string;
+  source: AudioSource;
+  speaker: string;
+  speakerId?: string;      // stable diarization speaker key (e.g. "Speaker A")
+  text: string;
+  timestamp: number;       // wall-clock ms when VAD emitted the segment
+  speechStartMs: number;   // wall-clock ms when speech actually began (VAD segmentStartTime)
+  startTime: number;       // whisper t0 (seconds within the segment's audio)
+  endTime: number;         // whisper t1 (seconds within the segment's audio)
+}
+
+export interface DiarizationSegment {
+  speaker: string;   // e.g. "Speaker A"
+  start: number;     // seconds from recording start
+  end: number;       // seconds from recording start
+}
+
+export interface ModelDefinition {
+  id: string;
+  fileName: string;
+  sizeMB: number;
+  label: string;
+  sha256?: string;
+}
+
+export interface ModelStatus {
+  downloaded: boolean;
+  downloading: boolean;
+  progress: number;
+  error: string | null;
+  whisperReady: boolean;
+}
+
+export interface TranscribeSegment {
+  text: string;
+  t0: number;
+  t1: number;
+  speakerTurn?: boolean;
+}
+
+export interface TranscribeResult {
+  text: string;
+  segments: TranscribeSegment[];
+}
+
+export interface DownloadProgress {
+  percent: number;
+  transferredBytes: number;
+  totalBytes: number;
+}
+
+export interface DiarizationDownloadProgress extends DownloadProgress {
+  phase: 'segmentation' | 'embedding' | 'extracting';
+}
+
+export interface MediaPermissions {
+  mic: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
+  screen: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
+}

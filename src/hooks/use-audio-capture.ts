@@ -24,7 +24,6 @@ export type SystemAudioStatus = 'inactive' | 'active' | 'no-permission' | 'faile
 export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: VADOptions) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [systemAudioStatus, setSystemAudioStatus] = useState<SystemAudioStatus>('inactive');
-  const [debugInfo, setDebugInfo] = useState<string[]>([]);
   const [isMicMuted, setIsMicMuted] = useState(false);
   const micMutedRef = useRef(false);
   const micPipeline = useRef<AudioPipeline | null>(null);
@@ -32,20 +31,39 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
 
+  // Debug log stored in a ref; only flushed to state via getDebugInfo()
+  const debugLogRef = useRef<string[]>([]);
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
+
   // Per-source pending chunk buffers flushed every FLUSH_INTERVAL_MS
   const micPendingRef = useRef<Float32Array[]>([]);
   const sysPendingRef = useRef<Float32Array[]>([]);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Hold-off timer for releasing mic gate after system audio speech ends
   const micGateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // How long (ms) to keep the mic gated after system audio speech stops.
-  // Must comfortably exceed silenceDurationMs (800ms default) so the echo
-  // segment emits while still gated and gets discarded.
   const MIC_GATE_HOLDOFF_MS = 1200;
+
+  // RMS throttle: only push state updates at ~15fps via requestAnimationFrame
+  const micRMSRef = useRef(0);
+  const sysRMSRef = useRef(0);
+  const rmsRafRef = useRef<number | null>(null);
+
+  const scheduleRMSUpdate = useCallback(() => {
+    if (rmsRafRef.current !== null) return;
+    rmsRafRef.current = requestAnimationFrame(() => {
+      rmsRafRef.current = null;
+      callbacksRef.current.onRMS('mic', micRMSRef.current);
+      callbacksRef.current.onRMS('system', sysRMSRef.current);
+    });
+  }, []);
 
   const log = useCallback((msg: string) => {
     console.log(`[audio-capture] ${msg}`);
-    setDebugInfo((prev) => [...prev.slice(-199), msg]);
+    debugLogRef.current = [...debugLogRef.current.slice(-199), msg];
+  }, []);
+
+  const flushDebugLog = useCallback(() => {
+    setDebugInfo([...debugLogRef.current]);
   }, []);
 
   const toggleMicMute = useCallback(() => {
@@ -88,12 +106,18 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
       const sourceNode = audioContext.createMediaStreamSource(stream);
       const workletNode = new AudioWorkletNode(audioContext, 'pcm-worklet-processor');
 
-      const vad = new SimpleVAD(vadOptions);
-      vad.setSpeechEndCallback((audio, speechStartMs) => {
-        callbacksRef.current.onSpeechEnd(source, float32ToArrayBuffer(audio), speechStartMs);
-      });
-      vad.setRMSCallback((rms) => {
-        callbacksRef.current.onRMS(source, rms);
+      const vad = new SimpleVAD(vadOptions, {
+        onSpeechEnd: (audio, speechStartMs) => {
+          callbacksRef.current.onSpeechEnd(source, float32ToArrayBuffer(audio), speechStartMs);
+        },
+        onRMS: (rms) => {
+          if (source === 'mic') {
+            micRMSRef.current = rms;
+          } else {
+            sysRMSRef.current = rms;
+          }
+          scheduleRMSUpdate();
+        },
       });
 
       workletNode.port.onmessage = (event) => {
@@ -123,10 +147,11 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
 
       return { stream, audioContext, workletNode, vad, onStateChange };
     },
-    [],
+    [scheduleRMSUpdate],
   );
 
   const startCapture = useCallback(async () => {
+    debugLogRef.current = [];
     setDebugInfo([]);
     micPendingRef.current = [];
     sysPendingRef.current = [];
@@ -195,7 +220,6 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
                 }
                 micVAD.setGated(true);
               } else {
-                // Delay release so any echo tail still emits while gated
                 micGateTimerRef.current = setTimeout(() => {
                   micVAD.setGated(false);
                   micGateTimerRef.current = null;
@@ -218,6 +242,9 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
       }
     }
 
+    // Flush debug log to state now that startup is done
+    flushDebugLog();
+
     // Start periodic flush
     flushIntervalRef.current = setInterval(() => {
       flushSource('mic');
@@ -225,7 +252,7 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
     }, FLUSH_INTERVAL_MS);
 
     setIsCapturing(true);
-  }, [createPipeline, log, flushSource]);
+  }, [createPipeline, log, flushSource, flushDebugLog]);
 
   const stopCapture = useCallback(async () => {
     // Stop flush interval
@@ -237,6 +264,11 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
     if (micGateTimerRef.current !== null) {
       clearTimeout(micGateTimerRef.current);
       micGateTimerRef.current = null;
+    }
+    // Cancel pending RMS animation frame
+    if (rmsRafRef.current !== null) {
+      cancelAnimationFrame(rmsRafRef.current);
+      rmsRafRef.current = null;
     }
 
     for (const pipeline of [micPipeline.current, sysPipeline.current]) {

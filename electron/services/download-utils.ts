@@ -3,12 +3,9 @@ import * as https from 'node:https';
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
+import type { DownloadProgress } from '../../shared/types';
 
-export interface DownloadProgress {
-  percent: number;
-  transferredBytes: number;
-  totalBytes: number;
-}
+export type { DownloadProgress };
 
 /**
  * Compute the SHA-256 hash of a file on disk.

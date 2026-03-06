@@ -1,5 +1,11 @@
 import { calculateRMS, concatFloat32Arrays } from './audio-utils';
 
+export interface VADCallbacks {
+  onSpeechEnd?: (audio: Float32Array, speechStartMs: number) => void;
+  onRMS?: (rms: number) => void;
+  onSpeechState?: (isSpeaking: boolean) => void;
+}
+
 export interface VADOptions {
   /** RMS threshold below which audio is considered silence (default: 0.01) */
   silenceThreshold?: number;
@@ -28,11 +34,15 @@ export class SimpleVAD {
   private onRMS: ((rms: number) => void) | null = null;
   private onSpeechState: ((isSpeaking: boolean) => void) | null = null;
 
-  constructor(options: VADOptions = {}) {
+  constructor(options: VADOptions = {}, callbacks: VADCallbacks = {}) {
     this.silenceThreshold = options.silenceThreshold ?? 0.01;
     this.silenceDurationMs = options.silenceDurationMs ?? 800;
     this.maxSegmentMs = options.maxSegmentMs ?? 30000;
     this.minSegmentMs = options.minSegmentMs ?? 500;
+
+    if (callbacks.onSpeechEnd) this.onSpeechEnd = callbacks.onSpeechEnd;
+    if (callbacks.onRMS) this.onRMS = callbacks.onRMS;
+    if (callbacks.onSpeechState) this.onSpeechState = callbacks.onSpeechState;
   }
 
   setSpeechEndCallback(cb: (audio: Float32Array, speechStartMs: number) => void) {
@@ -43,7 +53,6 @@ export class SimpleVAD {
     this.onRMS = cb;
   }
 
-  /** Fires when speech state transitions between active and inactive. */
   setSpeechStateCallback(cb: (isSpeaking: boolean) => void) {
     this.onSpeechState = cb;
   }
@@ -114,8 +123,6 @@ export class SimpleVAD {
       const durationMs = (this.totalSamples / 16000) * 1000;
       if (durationMs >= this.minSegmentMs && this.onSpeechEnd) {
         const audio = concatFloat32Arrays(this.chunks);
-        // Pass the wall-clock time when speech began so callers can align
-        // diarization output (which uses seconds from audio start) correctly.
         this.onSpeechEnd(audio, this.segmentStartTime ?? Date.now());
       }
     }

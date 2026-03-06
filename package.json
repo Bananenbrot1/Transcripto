@@ -2,7 +2,7 @@
   "name": "transcripto",
   "version": "1.0.0",
   "description": "Transcripto Electron App",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "tsc -p tsconfig.electron.json && concurrently -k \"vite\" \"tsc -p tsconfig.electron.json -w\" \"wait-on tcp:5173 && electron .\"",
     "build": "tsc -p tsconfig.electron.json && tsc && vite build",

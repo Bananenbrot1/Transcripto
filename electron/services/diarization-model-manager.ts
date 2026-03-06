@@ -2,7 +2,10 @@ import { app } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { downloadFile, type DownloadProgress } from './download-utils';
+import { downloadFile } from './download-utils';
+import type { DiarizationDownloadProgress } from '../../shared/types';
+
+export type { DiarizationDownloadProgress };
 
 // Note: release tag URL has a typo "recongition" — this matches the actual GitHub URL
 const SEGMENTATION_URL =
@@ -14,10 +17,6 @@ const EMBEDDING_URL =
 const SEGMENTATION_DIR_NAME = 'sherpa-onnx-pyannote-segmentation-3-0';
 const EMBEDDING_FILE_NAME = '3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx';
 const TOTAL_SIZE_MB = 35;
-
-export interface DiarizationDownloadProgress extends DownloadProgress {
-  phase: 'segmentation' | 'embedding' | 'extracting';
-}
 
 export interface DiarizationModelStatus {
   segmentation: boolean;

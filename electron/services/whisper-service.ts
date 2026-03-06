@@ -1,18 +1,15 @@
+import { app } from 'electron';
 import * as whisperNode from '@fugood/whisper.node';
 import type { WhisperContext, NewSegmentsEvent } from '@fugood/whisper.node';
-
-interface TranscribeResult {
-  text: string;
-  segments: Array<{
-    text: string;
-    t0: number;
-    t1: number;
-    speakerTurn: boolean;
-  }>;
-}
+import type { TranscribeResult } from '../../shared/types';
 
 const TURN_MARKER = ' [SPEAKER_TURN]';
 const TRANSCRIBE_TIMEOUT_MS = 20_000;
+const isDev = !app.isPackaged;
+
+function log(...args: unknown[]) {
+  if (isDev) console.log(...args);
+}
 // Maximum segments that may be queued (running + waiting) per source.
 // Excess segments are dropped rather than piling up unboundedly in memory.
 const MAX_QUEUE_DEPTH = 3;
@@ -29,9 +26,9 @@ let micQueueDepth = 0;
 let sysQueueDepth = 0;
 
 export async function initialize(modelPath: string): Promise<void> {
-  console.log(`[whisper] initialize: modelPath=${modelPath}`);
+  log(`[whisper] initialize: modelPath=${modelPath}`);
   if (micContext || sysContext) {
-    console.log('[whisper] releasing existing contexts before re-init');
+    log('[whisper] releasing existing contexts before re-init');
     await release();
   }
 
@@ -43,7 +40,7 @@ export async function initialize(modelPath: string): Promise<void> {
   sysHead = Promise.resolve();
   micQueueDepth = 0;
   sysQueueDepth = 0;
-  console.log('[whisper] initialize: contexts ready', { mic: !!micContext, sys: !!sysContext });
+  log('[whisper] initialize: contexts ready', { mic: !!micContext, sys: !!sysContext });
 }
 
 async function doTranscribe(
@@ -59,7 +56,7 @@ async function doTranscribe(
   }
 
   const float32Length = audioBuffer.byteLength / 4;
-  console.log(`[whisper] transcribe start: source=${source}, lang=${language}, float32Samples=${float32Length}`);
+  log(`[whisper] transcribe start: source=${source}, lang=${language}, float32Samples=${float32Length}`);
 
   const float32 = new Float32Array(audioBuffer);
   const int16 = new Int16Array(float32.length);
@@ -67,25 +64,25 @@ async function doTranscribe(
     const s = Math.max(-1, Math.min(1, float32[i]));
     int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
   }
-  console.log(`[whisper] transcribe: converted to ${int16.length} int16 samples`);
+  log(`[whisper] transcribe: converted to ${int16.length} int16 samples`);
 
   const collectedSegments: Array<{ text: string; t0: number; t1: number }> = [];
 
-  console.log('[whisper] transcribe: calling ctx.transcribeData...');
+  log('[whisper] transcribe: calling ctx.transcribeData...');
   const { promise: nativePromise } = ctx.transcribeData(int16.buffer, {
     language: language || 'auto',
     maxLen: 0,
     temperature: 0.0,
     tdrzEnable: true,
     onNewSegments: (event: NewSegmentsEvent) => {
-      console.log('[whisper] onNewSegments received:', typeof event, JSON.stringify(event));
+      log('[whisper] onNewSegments received:', typeof event, JSON.stringify(event));
       try {
         for (const seg of event.segments) {
           collectedSegments.push({ text: seg.text ?? '', t0: seg.t0 ?? 0, t1: seg.t1 ?? 0 });
         }
-        console.log(`[whisper] onNewSegments: pushed ${event.segments.length} segment(s), total=${collectedSegments.length}`);
+        log(`[whisper] onNewSegments: pushed ${event.segments.length} segment(s), total=${collectedSegments.length}`);
       } catch (err) {
-        console.error('[whisper] onNewSegments push error:', err);
+        log('[whisper] onNewSegments push error:', err);
       }
     },
   });
@@ -97,17 +94,17 @@ async function doTranscribe(
     setTimeout(() => reject(new Error(`[whisper] transcribeData timed out after ${TRANSCRIBE_TIMEOUT_MS}ms`)), TRANSCRIBE_TIMEOUT_MS),
   );
 
-  console.log('[whisper] transcribe: awaiting promise (timeout=' + TRANSCRIBE_TIMEOUT_MS + 'ms)...');
+  log('[whisper] transcribe: awaiting promise (timeout=' + TRANSCRIBE_TIMEOUT_MS + 'ms)...');
   try {
     await Promise.race([nativePromise, timeout]);
-    console.log(`[whisper] transcribe: promise resolved, collectedSegments=${collectedSegments.length}`);
+    log(`[whisper] transcribe: promise resolved, collectedSegments=${collectedSegments.length}`);
   } catch (err) {
     if (collectedSegments.length > 0) {
       // The native promise didn't resolve but segments were delivered — use them.
       // The gate will release once the native op eventually finishes.
-      console.warn(`[whisper] timeout but ${collectedSegments.length} segment(s) already collected — using partial result`);
+      log(`[whisper] timeout but ${collectedSegments.length} segment(s) already collected — using partial result`);
     } else {
-      console.error('[whisper] transcribe: no segments and timed out:', err);
+      log('[whisper] transcribe: no segments and timed out:', err);
       throw err;
     }
   }
@@ -126,7 +123,7 @@ async function doTranscribe(
     text: processed.map((s) => s.text).join(' ').trim(),
     segments: processed,
   };
-  console.log(`[whisper] transcribe done: text="${result.text.slice(0, 80)}...", segments=${result.segments.length}`);
+  log(`[whisper] transcribe done: text="${result.text.slice(0, 80)}...", segments=${result.segments.length}`);
   return result;
 }
 
@@ -137,7 +134,7 @@ export function transcribe(
 ): Promise<TranscribeResult> {
   const depth = source === 'mic' ? micQueueDepth : sysQueueDepth;
   if (depth >= MAX_QUEUE_DEPTH) {
-    console.warn(`[whisper] queue full (depth=${depth}) for source=${source} — dropping segment`);
+    log(`[whisper] queue full (depth=${depth}) for source=${source} — dropping segment`);
     return Promise.reject(new Error(`Whisper queue full for ${source}, segment dropped`));
   }
 
@@ -173,7 +170,7 @@ export function transcribe(
 }
 
 export async function release(): Promise<void> {
-  console.log('[whisper] release called');
+  log('[whisper] release called');
   micHead = Promise.resolve();
   sysHead = Promise.resolve();
   micQueueDepth = 0;
@@ -188,5 +185,5 @@ export async function release(): Promise<void> {
     sysContext = null;
   }
   await Promise.all(promises);
-  console.log('[whisper] release done');
+  log('[whisper] release done');
 }

@@ -2,19 +2,9 @@ import { app } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { downloadFile, type DownloadProgress } from './download-utils';
+import type { ModelDefinition } from '../../shared/types';
 
 const BASE_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/';
-
-interface ModelDefinition {
-  id: string;
-  fileName: string;
-  sizeMB: number;
-  label: string;
-  /** SHA-256 of the model file from the upstream repository.
-   *  Leave undefined to skip integrity check (e.g. during development).
-   *  Obtain from: https://huggingface.co/ggerganov/whisper.cpp/tree/main */
-  sha256?: string;
-}
 
 const MODEL_CATALOG: Record<string, ModelDefinition> = {
   tiny: { id: 'tiny', fileName: 'ggml-tiny.bin', sizeMB: 75, label: 'Tiny — Fastest' },

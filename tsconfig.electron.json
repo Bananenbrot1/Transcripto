@@ -4,13 +4,13 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "outDir": "dist-electron",
-    "rootDir": "electron",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["electron/**/*"],
+  "include": ["electron/**/*", "shared/**/*"],
   "exclude": ["electron/**/*.test.ts", "node_modules"]
 }

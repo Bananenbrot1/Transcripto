@@ -8,11 +8,9 @@ type SherpaOnnxModule = typeof SherpaOnnxType;
 let sherpaOnnx: SherpaOnnxModule | null = null;
 let diarizer: SherpaOnnxType.OfflineSpeakerDiarization | null = null;
 
-export interface DiarizedSegment {
-  speaker: string;
-  start: number;
-  end: number;
-}
+// Re-export the shared DiarizationSegment as DiarizedSegment for backward compat
+import type { DiarizationSegment } from '../../shared/types';
+export type DiarizedSegment = DiarizationSegment;
 
 export function initialize(segmentationModelPath: string, embeddingModelPath: string): void {
   // Already initialized — skip the expensive model reload.
@@ -56,7 +54,7 @@ export function release(): void {
   diarizer = null;
 }
 
-// __dirname = dist-electron/services/ at runtime
+// __dirname = dist-electron/electron/services/ at runtime
 const WORKER_PATH = path.join(__dirname, '..', 'workers', 'diarization-worker.js');
 
 export function diarizeFromFile(
