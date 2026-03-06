@@ -276,7 +276,11 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
         pipeline.vad.flush();
         pipeline.audioContext.removeEventListener('statechange', pipeline.onStateChange);
         pipeline.stream.getTracks().forEach((track) => track.stop());
-        await pipeline.audioContext.close();
+        try {
+          await pipeline.audioContext.close();
+        } catch {
+          // AudioContext may already be closed or in an invalid state
+        }
       }
     }
     micPipeline.current = null;

@@ -44,6 +44,8 @@ export function openRecording(): void {
 
   micStream = fs.createWriteStream(micPath);
   sysStream = fs.createWriteStream(sysPath);
+  micStream.on('error', (err) => console.error('[audio-file-service] mic write error:', err));
+  sysStream.on('error', (err) => console.error('[audio-file-service] sys write error:', err));
 }
 
 export function appendChunk(source: 'mic' | 'sys', buf: Buffer): void {

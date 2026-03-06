@@ -62,7 +62,12 @@ export function downloadFile(
         // Follow redirects, keeping the Range header.
         if (res.statusCode !== undefined && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
-          doRequest(res.headers.location, rangeStart);
+          const location = res.headers.location;
+          if (!location.startsWith('https://')) {
+            fail(new Error(`Refusing non-HTTPS redirect to ${location}`));
+            return;
+          }
+          doRequest(location, rangeStart);
           return;
         }
 

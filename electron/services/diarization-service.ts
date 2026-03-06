@@ -57,6 +57,9 @@ export function release(): void {
 // __dirname = dist-electron/electron/services/ at runtime
 const WORKER_PATH = path.join(__dirname, '..', 'workers', 'diarization-worker.js');
 
+// Maximum time (ms) the diarization worker is allowed to run before we kill it.
+const DIARIZATION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 export function diarizeFromFile(
   micPath: string,
   sysPath: string,
@@ -65,6 +68,8 @@ export function diarizeFromFile(
   numSpeakers = -1,
 ): Promise<DiarizedSegment[]> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+
     const worker = new Worker(WORKER_PATH, {
       workerData: {
         micPath,
@@ -73,9 +78,27 @@ export function diarizeFromFile(
         embeddingModelPath: embModelPath,
         numSpeakers,
       },
+      stderr: true,
+    });
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        worker.terminate();
+        reject(new Error('Diarization timed out after 5 minutes'));
+      }
+    }, DIARIZATION_TIMEOUT_MS);
+
+    // Collect stderr for better error diagnostics
+    let stderrOutput = '';
+    worker.stderr?.on('data', (chunk: Buffer) => {
+      stderrOutput += chunk.toString();
     });
 
     worker.on('message', (msg: { type: string; segments?: DiarizedSegment[]; message?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       if (msg.type === 'result') {
         resolve(msg.segments ?? []);
       } else if (msg.type === 'error') {
@@ -83,11 +106,19 @@ export function diarizeFromFile(
       }
     });
 
-    worker.on('error', (err) => reject(err));
+    worker.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+
     worker.on('exit', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Diarization worker exited with code ${code}`));
-      }
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const detail = stderrOutput ? `\n${stderrOutput.trim()}` : '';
+      reject(new Error(`Diarization worker exited with code ${code}${detail}`));
     });
   });
 }
