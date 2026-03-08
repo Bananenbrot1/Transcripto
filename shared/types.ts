@@ -68,3 +68,22 @@ export interface MediaPermissions {
   mic: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
   screen: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
 }
+
+export interface StoreSchema {
+  model: string;
+  language: string;
+  onboardingComplete: boolean;
+  darkMode: boolean | null; // null = follow system
+  export: {
+    folder: string;
+    filenameTemplate: string;
+    bodyTemplate: string;
+    autoSave: boolean;
+  };
+  vad: {
+    silenceThreshold: number;
+    silenceDurationMs: number;
+    maxSegmentMs: number;
+    minSegmentMs: number;
+  };
+}

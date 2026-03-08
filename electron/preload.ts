@@ -65,6 +65,10 @@ const api: ElectronAPI = {
   },
 
   diarize: (numSpeakers?: number) => ipcRenderer.invoke('diarize', numSpeakers),
+
+  storeGet: (key: string) => ipcRenderer.invoke('store-get', key),
+  storeSet: (key: string, value: unknown) => ipcRenderer.invoke('store-set', key, value),
+  storeGetAll: () => ipcRenderer.invoke('store-get-all'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

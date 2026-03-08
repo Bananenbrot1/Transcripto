@@ -4,8 +4,10 @@ import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
 import { useVADSettings } from '@/hooks/use-vad-settings';
+import { useStoreValue } from '@/hooks/use-store';
 import { applyTemplate, buildExportVariables } from '@/lib/format-export';
-import { ModelDownloadScreen } from '@/components/model-download-screen';
+import { migrateFromLocalStorage } from '@/lib/migrate-local-storage';
+import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
 import { ExportSettingsDialog } from '@/components/export-settings-dialog';
 import { RecordButton } from '@/components/record-button';
 import { Button } from '@/components/ui/button';
@@ -71,22 +73,30 @@ export function App() {
     restoreTranscript,
   } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings });
 
+  const [onboardingComplete, setOnboardingComplete] = useStoreValue('onboardingComplete');
+  const [storedDarkMode, setStoredDarkMode] = useStoreValue('darkMode');
+
+  // Run one-time migration from localStorage on mount
+  useEffect(() => {
+    migrateFromLocalStorage();
+  }, []);
+
   const [title, setTitle] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [showDebug, setShowDebug] = useState(false);
   const prevRecordingState = useRef(recordingState);
+  const autoInitAttempted = useRef(false);
 
-  // Dark mode
-  const [darkMode, setDarkMode] = useState(() => {
-    const stored = localStorage.getItem('transcripto-dark-mode');
-    if (stored !== null) return stored === 'true';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
+  // Dark mode — null means follow system preference
+  const darkMode = storedDarkMode ?? window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const setDarkMode = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof value === 'function' ? value(darkMode) : value;
+    setStoredDarkMode(next);
+  }, [darkMode, setStoredDarkMode]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
-    localStorage.setItem('transcripto-dark-mode', String(darkMode));
   }, [darkMode]);
 
   // Recording timer (pauses correctly by tracking accumulated time)
@@ -191,9 +201,27 @@ export function App() {
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
   };
 
-  if (!status.whisperReady) {
+  // Auto-initialize whisper on subsequent launches (onboarding already done)
+  useEffect(() => {
+    if (onboardingComplete && !status.whisperReady && !autoInitAttempted.current) {
+      autoInitAttempted.current = true;
+      // Wait for downloadedModels to be populated before auto-init
+      const hasAnyModel = Object.values(downloadedModels).some(Boolean);
+      if (hasAnyModel && downloadedModels[selectedModel]) {
+        initializeWhisper();
+      }
+    }
+  }, [onboardingComplete, status.whisperReady, downloadedModels, selectedModel, initializeWhisper]);
+
+  const handleOnboardingComplete = useCallback(() => {
+    setOnboardingComplete(true);
+    initializeWhisper();
+  }, [setOnboardingComplete, initializeWhisper]);
+
+  // Show onboarding on first launch
+  if (!onboardingComplete) {
     return (
-      <ModelDownloadScreen
+      <OnboardingFlow
         status={status}
         models={models}
         selectedModel={selectedModel}
@@ -202,8 +230,23 @@ export function App() {
         onSelectModel={setSelectedModel}
         onSelectLanguage={setSelectedLanguage}
         onDownload={downloadModel}
-        onInitialize={initializeWhisper}
+        onComplete={handleOnboardingComplete}
       />
+    );
+  }
+
+  // Show loading while whisper initializes on subsequent launches
+  if (!status.whisperReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <div className="text-center space-y-4">
+          <div className="size-8 mx-auto border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-muted-foreground">Loading model...</p>
+          {status.error && (
+            <p className="text-sm text-destructive">{status.error}</p>
+          )}
+        </div>
+      </div>
     );
   }
 

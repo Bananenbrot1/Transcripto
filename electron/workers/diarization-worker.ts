@@ -1,5 +1,8 @@
 import { workerData, parentPort } from 'node:worker_threads';
+import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
+
+const require = createRequire(import.meta.url);
 
 interface WorkerData {
   micPath: string;
@@ -85,7 +88,6 @@ async function run(): Promise<void> {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const sherpaOnnx = require('sherpa-onnx-node');
 
   const diarizer = new sherpaOnnx.OfflineSpeakerDiarization({

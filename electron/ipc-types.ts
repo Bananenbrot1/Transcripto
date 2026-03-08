@@ -12,6 +12,7 @@ import type {
   DiarizationSegment,
   DiarizationDownloadProgress,
   MediaPermissions,
+  StoreSchema,
 } from '../shared/types';
 
 export type {
@@ -21,6 +22,7 @@ export type {
   DiarizationSegment,
   DiarizationDownloadProgress,
   MediaPermissions,
+  StoreSchema,
 };
 
 /** All methods exposed on window.electronAPI via contextBridge. */
@@ -49,4 +51,7 @@ export interface ElectronAPI {
   cleanupAudioRecording: () => Promise<void>;
   onDiarizationProgress: (cb: (p: { elapsedMs: number }) => void) => () => void;
   diarize: (numSpeakers?: number) => Promise<DiarizationSegment[]>;
+  storeGet: <K extends keyof StoreSchema>(key: K) => Promise<StoreSchema[K]>;
+  storeSet: <K extends keyof StoreSchema>(key: K, value: StoreSchema[K]) => Promise<void>;
+  storeGetAll: () => Promise<StoreSchema>;
 }

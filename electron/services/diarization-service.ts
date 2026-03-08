@@ -1,6 +1,9 @@
 import * as path from 'node:path';
+import { createRequire } from 'node:module';
 import { Worker } from 'node:worker_threads';
 import type * as SherpaOnnxType from 'sherpa-onnx-node';
+
+const require = createRequire(import.meta.url);
 
 // Lazy-loaded on first initialize() call so a load failure doesn't crash the
 // main process at startup and break unrelated features (e.g. transcription).
@@ -9,7 +12,7 @@ let sherpaOnnx: SherpaOnnxModule | null = null;
 let diarizer: SherpaOnnxType.OfflineSpeakerDiarization | null = null;
 
 // Re-export the shared DiarizationSegment as DiarizedSegment for backward compat
-import type { DiarizationSegment } from '../../shared/types';
+import type { DiarizationSegment } from '../../shared/types.js';
 export type DiarizedSegment = DiarizationSegment;
 
 export function initialize(segmentationModelPath: string, embeddingModelPath: string): void {
@@ -17,7 +20,6 @@ export function initialize(segmentationModelPath: string, embeddingModelPath: st
   if (diarizer) return;
 
   if (!sherpaOnnx) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     sherpaOnnx = require('sherpa-onnx-node') as SherpaOnnxModule;
   }
 
@@ -54,8 +56,7 @@ export function release(): void {
   diarizer = null;
 }
 
-// __dirname = dist-electron/electron/services/ at runtime
-const WORKER_PATH = path.join(__dirname, '..', 'workers', 'diarization-worker.js');
+const WORKER_PATH = path.join(import.meta.dirname, '..', 'workers', 'diarization-worker.js');
 
 // Maximum time (ms) the diarization worker is allowed to run before we kill it.
 const DIARIZATION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes

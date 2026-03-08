@@ -3,7 +3,7 @@ import * as https from 'node:https';
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
-import type { DownloadProgress } from '../../shared/types';
+import type { DownloadProgress } from '../../shared/types.js';
 
 export type { DownloadProgress };
 

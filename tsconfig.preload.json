@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "CommonJS",
+    "moduleResolution": "node",
     "outDir": "dist-electron",
     "rootDir": ".",
     "strict": true,
@@ -11,6 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["electron/**/*", "shared/**/*"],
-  "exclude": ["electron/**/*.test.ts", "electron/preload.ts", "node_modules"]
+  "include": ["electron/preload.ts", "electron/ipc-types.ts", "shared/types.ts"],
+  "exclude": ["node_modules"]
 }

@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useStoreValue } from './use-store';
 import type { ModelStatus, ModelDefinition } from '@/types/transcription';
-
-const DEFAULT_MODEL = 'large-v3-turbo-q5';
-const DEFAULT_LANGUAGE = 'auto';
 
 export function useModelStatus() {
   const [status, setStatus] = useState<ModelStatus>({
@@ -16,24 +14,17 @@ export function useModelStatus() {
   const [models, setModels] = useState<ModelDefinition[]>([]);
   const [downloadedModels, setDownloadedModels] = useState<Record<string, boolean>>({});
 
-  const [selectedModel, setSelectedModelState] = useState<string>(
-    () => localStorage.getItem('transcripto-model') || DEFAULT_MODEL,
-  );
-
-  const [selectedLanguage, setSelectedLanguageState] = useState<string>(
-    () => localStorage.getItem('transcripto-language') || DEFAULT_LANGUAGE,
-  );
+  const [selectedModel, setSelectedModelStore] = useStoreValue('model');
+  const [selectedLanguage, setSelectedLanguageStore] = useStoreValue('language');
 
   const setSelectedModel = useCallback((id: string) => {
-    localStorage.setItem('transcripto-model', id);
-    setSelectedModelState(id);
+    setSelectedModelStore(id);
     setStatus((s) => ({ ...s, downloaded: !!downloadedModels[id] }));
-  }, [downloadedModels]);
+  }, [downloadedModels, setSelectedModelStore]);
 
   const setSelectedLanguage = useCallback((lang: string) => {
-    localStorage.setItem('transcripto-language', lang);
-    setSelectedLanguageState(lang);
-  }, []);
+    setSelectedLanguageStore(lang);
+  }, [setSelectedLanguageStore]);
 
   const refreshDownloadedModels = useCallback(async () => {
     const statusMap = await window.electronAPI.checkAllModelStatus();

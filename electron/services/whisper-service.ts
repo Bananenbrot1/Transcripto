@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import * as whisperNode from '@fugood/whisper.node';
 import type { WhisperContext, NewSegmentsEvent } from '@fugood/whisper.node';
-import type { TranscribeResult } from '../../shared/types';
+import type { TranscribeResult } from '../../shared/types.js';
 
 const TURN_MARKER = ' [SPEAKER_TURN]';
 const TRANSCRIBE_TIMEOUT_MS = 20_000;
