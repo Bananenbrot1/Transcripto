@@ -24,4 +24,9 @@ export const STORE_DEFAULTS: StoreSchema = {
     maxSegmentMs: 30000,
     minSegmentMs: 500,
   },
+  shortcuts: {
+    toggleRecording: null,
+    togglePause: null,
+    toggleMicMute: null,
+  },
 };

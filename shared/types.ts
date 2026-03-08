@@ -69,6 +69,14 @@ export interface MediaPermissions {
   screen: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
 }
 
+export type ShortcutAction = 'toggleRecording' | 'togglePause' | 'toggleMicMute';
+
+export interface ShortcutConfig {
+  toggleRecording: string | null;
+  togglePause: string | null;
+  toggleMicMute: string | null;
+}
+
 export interface StoreSchema {
   model: string;
   language: string;
@@ -86,4 +94,5 @@ export interface StoreSchema {
     maxSegmentMs: number;
     minSegmentMs: number;
   };
+  shortcuts: ShortcutConfig;
 }

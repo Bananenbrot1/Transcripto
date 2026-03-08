@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon, Settings2, FileOutput, SlidersHorizontal } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon, Settings2, FileOutput, SlidersHorizontal, Keyboard, AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -13,12 +13,14 @@ import { LANGUAGES } from '@/lib/languages';
 import type { ExportSettings } from '@/hooks/use-export-settings';
 import type { VADSettings } from '@/hooks/use-vad-settings';
 import type { ModelDefinition } from '@/types/transcription';
+import type { ShortcutConfig, ShortcutAction } from '../../shared/types';
 
 type AppearanceMode = 'system' | 'light' | 'dark';
 
 const TABS = [
   { id: 'General' as const, label: 'General', icon: Settings2 },
   { id: 'Export' as const, label: 'Export', icon: FileOutput },
+  { id: 'Shortcuts' as const, label: 'Shortcuts', icon: Keyboard },
   { id: 'Advanced' as const, label: 'Advanced', icon: SlidersHorizontal },
 ];
 type Tab = typeof TABS[number]['id'];
@@ -54,6 +56,10 @@ interface SettingsDialogProps {
   // Debug
   showDebug: boolean;
   onShowDebugChange: (v: boolean) => void;
+  // Shortcuts
+  shortcuts: ShortcutConfig;
+  shortcutStatus: Record<string, boolean>;
+  onShortcutsChange: (shortcuts: ShortcutConfig) => void;
 }
 
 function toAppearanceMode(darkMode: boolean | null): AppearanceMode {
@@ -71,6 +77,139 @@ const appearanceOptions: { value: AppearanceMode; label: string; icon: typeof Su
   { value: 'light', label: 'Light', icon: Sun },
   { value: 'dark', label: 'Dark', icon: Moon },
 ];
+
+const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
+  toggleRecording: 'Start / Stop recording',
+  togglePause: 'Pause / Resume',
+  toggleMicMute: 'Mute / Unmute mic',
+};
+
+function formatAccelerator(accelerator: string): string {
+  return accelerator
+    .replace('CommandOrControl', '\u2318')
+    .replace('Command', '\u2318')
+    .replace('Control', '\u2303')
+    .replace('Alt', '\u2325')
+    .replace('Option', '\u2325')
+    .replace('Shift', '\u21E7')
+    .replace(/\+/g, ' ');
+}
+
+function keyEventToAccelerator(e: KeyboardEvent): string | null {
+  const key = e.key;
+  // Ignore standalone modifier keys
+  if (['Meta', 'Control', 'Alt', 'Shift'].includes(key)) return null;
+
+  const parts: string[] = [];
+  if (e.metaKey) parts.push('CommandOrControl');
+  if (e.ctrlKey && !e.metaKey) parts.push('CommandOrControl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+
+  // Require at least one modifier
+  if (parts.length === 0) return null;
+
+  // Normalize key name to Electron accelerator format
+  const keyMap: Record<string, string> = {
+    ' ': 'Space',
+    'ArrowUp': 'Up',
+    'ArrowDown': 'Down',
+    'ArrowLeft': 'Left',
+    'ArrowRight': 'Right',
+  };
+  const normalizedKey = keyMap[key] || (key.length === 1 ? key.toUpperCase() : key);
+  parts.push(normalizedKey);
+
+  return parts.join('+');
+}
+
+function ShortcutRecorder({
+  value,
+  failed,
+  onChange,
+}: {
+  value: string | null;
+  failed: boolean;
+  onChange: (value: string | null) => void;
+}) {
+  const [recording, setRecording] = useState(false);
+  const inputRef = useRef<HTMLDivElement>(null);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const accelerator = keyEventToAccelerator(e);
+    if (accelerator) {
+      onChange(accelerator);
+      setRecording(false);
+    }
+  }, [onChange]);
+
+  useEffect(() => {
+    if (!recording) return;
+    const el = inputRef.current;
+    if (el) el.focus();
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [recording, handleKeyDown]);
+
+  // Stop recording on blur
+  useEffect(() => {
+    if (!recording) return;
+    const handleBlur = () => setRecording(false);
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
+  }, [recording]);
+
+  if (recording) {
+    return (
+      <div
+        ref={inputRef}
+        tabIndex={0}
+        onBlur={() => setRecording(false)}
+        className="h-7 px-2.5 rounded-md border-2 border-primary bg-primary/5 text-xs font-medium flex items-center gap-1 text-primary animate-pulse cursor-pointer"
+      >
+        Press shortcut...
+      </div>
+    );
+  }
+
+  if (value) {
+    return (
+      <div className="flex items-center gap-1">
+        {failed && (
+          <span title="Could not register - may be in use by another app">
+            <AlertCircle className="size-3.5 text-destructive" />
+          </span>
+        )}
+        <button
+          onClick={() => setRecording(true)}
+          className={`h-7 px-2.5 rounded-md border text-xs font-mono font-medium flex items-center gap-1 transition-colors hover:bg-muted ${
+            failed ? 'border-destructive/50 text-destructive' : 'border-input text-foreground'
+          }`}
+        >
+          {formatAccelerator(value)}
+        </button>
+        <button
+          onClick={() => onChange(null)}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+          title="Remove shortcut"
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setRecording(true)}
+      className="h-7 px-2.5 rounded-md border border-dashed border-input text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+    >
+      Set shortcut
+    </button>
+  );
+}
 
 export function SettingsDialog({
   open,
@@ -98,6 +237,9 @@ export function SettingsDialog({
   onResetVADDefaults,
   showDebug,
   onShowDebugChange,
+  shortcuts,
+  shortcutStatus,
+  onShortcutsChange,
 }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<Tab>('General');
 
@@ -111,6 +253,10 @@ export function SettingsDialog({
     : 'Unknown';
 
   const currentAppearance = toAppearanceMode(darkMode);
+
+  const handleShortcutChange = (action: ShortcutAction, value: string | null) => {
+    onShortcutsChange({ ...shortcuts, [action]: value });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -218,6 +364,7 @@ export function SettingsDialog({
                   </div>
                 )}
               </section>
+
             </>
           )}
 
@@ -283,6 +430,24 @@ export function SettingsDialog({
                 </div>
               </section>
             </>
+          )}
+
+          {activeTab === 'Shortcuts' && (
+            <section className="space-y-3">
+              <p className="text-xs text-muted-foreground">Global shortcuts work even when the app is in the background.</p>
+              <div className="space-y-2">
+                {(Object.keys(SHORTCUT_LABELS) as ShortcutAction[]).map((action) => (
+                  <div key={action} className="flex items-center justify-between">
+                    <span className="text-sm">{SHORTCUT_LABELS[action]}</span>
+                    <ShortcutRecorder
+                      value={shortcuts[action]}
+                      failed={shortcuts[action] !== null && shortcutStatus[action] === false}
+                      onChange={(value) => handleShortcutChange(action, value)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
 
           {activeTab === 'Advanced' && (
