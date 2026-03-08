@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon, Settings2, FileOutput, SlidersHorizontal, Keyboard, AlertCircle, X } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon, Settings2, FileOutput, SlidersHorizontal, Keyboard, AlertCircle, X, Mic } from 'lucide-react';
+import { useAudioDevices } from '@/hooks/use-audio-devices';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -60,6 +61,9 @@ interface SettingsDialogProps {
   shortcuts: ShortcutConfig;
   shortcutStatus: Record<string, boolean>;
   onShortcutsChange: (shortcuts: ShortcutConfig) => void;
+  // Audio input
+  audioInputDeviceId: string;
+  onAudioInputDeviceChange: (deviceId: string) => void;
 }
 
 function toAppearanceMode(darkMode: boolean | null): AppearanceMode {
@@ -240,8 +244,11 @@ export function SettingsDialog({
   shortcuts,
   shortcutStatus,
   onShortcutsChange,
+  audioInputDeviceId,
+  onAudioInputDeviceChange,
 }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<Tab>('General');
+  const audioDevices = useAudioDevices();
 
   const handleBrowse = async () => {
     const folder = await window.electronAPI.selectExportFolder();
@@ -301,6 +308,29 @@ export function SettingsDialog({
                       {label}
                     </button>
                   ))}
+                </div>
+              </section>
+
+              {/* Audio Input */}
+              <section className="space-y-3">
+                <h3 className="text-sm font-medium">Audio Input</h3>
+                <div className="space-y-1.5">
+                  <Label htmlFor="settings-audio-input" className="text-xs text-muted-foreground">Microphone</Label>
+                  <select
+                    id="settings-audio-input"
+                    value={audioInputDeviceId}
+                    onChange={(e) => onAudioInputDeviceChange(e.target.value)}
+                    disabled={isCapturing}
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+                  >
+                    <option value="">System Default</option>
+                    {audioDevices.map((d) => (
+                      <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Select the microphone to use for recording. Changes take effect on the next recording.
+                  </p>
                 </div>
               </section>
 

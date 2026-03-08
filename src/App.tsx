@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mic, MicOff, Settings, Pause, Play, Languages } from 'lucide-react';
+import { Mic, MicOff, Settings, Pause, Play, Languages, Check, Download, Loader2, ArrowLeft } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
@@ -50,6 +50,8 @@ export function App() {
     resetDefaults: resetVADDefaults,
   } = useVADSettings();
 
+  const [audioInputDeviceId, setAudioInputDeviceId] = useStoreValue('audioInputDeviceId');
+
   const {
     segments,
     recordingState,
@@ -72,7 +74,7 @@ export function App() {
     renameSpeaker,
     dismissTranscript,
     restoreTranscript,
-  } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings });
+  } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings, audioInputDeviceId });
 
   const [onboardingComplete, setOnboardingComplete] = useStoreValue('onboardingComplete');
   const [storedDarkMode, setStoredDarkMode] = useStoreValue('darkMode');
@@ -88,6 +90,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [showDebug, setShowDebug] = useState(false);
+  const [changingModel, setChangingModel] = useState(false);
   const prevRecordingState = useRef(recordingState);
   const autoInitAttempted = useRef(false);
 
@@ -241,6 +244,7 @@ export function App() {
 
   // Auto-initialize whisper on subsequent launches (onboarding already done)
   useEffect(() => {
+    if (changingModel) return;
     if (onboardingComplete && !status.whisperReady && !autoInitAttempted.current) {
       autoInitAttempted.current = true;
       // Wait for downloadedModels to be populated before auto-init
@@ -249,7 +253,7 @@ export function App() {
         initializeWhisper();
       }
     }
-  }, [onboardingComplete, status.whisperReady, downloadedModels, selectedModel, initializeWhisper]);
+  }, [onboardingComplete, status.whisperReady, downloadedModels, selectedModel, initializeWhisper, changingModel]);
 
   const handleOnboardingComplete = useCallback(() => {
     setOnboardingComplete(true);
@@ -270,6 +274,93 @@ export function App() {
         onDownload={downloadModel}
         onComplete={handleOnboardingComplete}
       />
+    );
+  }
+
+  // Show model picker when user chose "Change model" from settings
+  if (changingModel) {
+    const hasSelectedDownloaded = !!downloadedModels[selectedModel];
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <div className="w-full max-w-md px-6 space-y-6">
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold tracking-tight">Change model</h2>
+            <p className="text-muted-foreground">
+              Select a model and download it if needed.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            {models.map((model) => {
+              const isSelected = model.id === selectedModel;
+              const isDownloaded = !!downloadedModels[model.id];
+              return (
+                <button
+                  key={model.id}
+                  onClick={() => setSelectedModel(model.id)}
+                  className={`w-full flex items-center gap-3 rounded-lg border px-4 py-2.5 text-left transition-colors ${
+                    isSelected
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                  }`}
+                >
+                  <div className={`size-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    isSelected ? 'border-primary' : 'border-muted-foreground/30'
+                  }`}>
+                    {isSelected && <div className="size-2 rounded-full bg-primary" />}
+                  </div>
+                  <span className="font-medium text-sm flex-1">{model.label}</span>
+                  {isDownloaded && <Check className="size-3.5 text-green-500" />}
+                  <span className="text-xs text-muted-foreground">
+                    {model.sizeMB >= 1000 ? `~${(model.sizeMB / 1000).toFixed(1)} GB` : `~${model.sizeMB} MB`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {status.downloading && (
+            <div className="space-y-2">
+              <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${status.progress}%` }} />
+              </div>
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                <span>Downloading... {status.progress}%</span>
+              </div>
+            </div>
+          )}
+
+          {status.error && (
+            <p className="text-sm text-destructive">{status.error}</p>
+          )}
+
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="sm" onClick={() => {
+              setChangingModel(false);
+              autoInitAttempted.current = false;
+            }}>
+              <ArrowLeft className="size-4" />
+              Cancel
+            </Button>
+
+            {hasSelectedDownloaded ? (
+              <Button onClick={() => {
+                setChangingModel(false);
+                autoInitAttempted.current = false;
+                initializeWhisper();
+              }}>
+                Load model
+              </Button>
+            ) : (
+              <Button onClick={downloadModel} disabled={status.downloading}>
+                <Download className="size-4" />
+                Download
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -445,7 +536,7 @@ export function App() {
         currentModel={currentModel}
         selectedLanguage={selectedLanguage}
         onSelectLanguage={setSelectedLanguage}
-        onChangeModel={() => { setSettingsOpen(false); changeModel(); }}
+        onChangeModel={() => { setSettingsOpen(false); setChangingModel(true); changeModel(); }}
         isCapturing={isCapturing}
         showDebug={showDebug}
         onShowDebugChange={setShowDebug}
@@ -455,6 +546,8 @@ export function App() {
         shortcuts={shortcuts}
         shortcutStatus={shortcutStatus}
         onShortcutsChange={setShortcuts}
+        audioInputDeviceId={audioInputDeviceId}
+        onAudioInputDeviceChange={setAudioInputDeviceId}
       />
 
       {dismissToast && (

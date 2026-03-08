@@ -29,4 +29,5 @@ export const STORE_DEFAULTS: StoreSchema = {
     togglePause: null,
     toggleMicMute: null,
   },
+  audioInputDeviceId: '',
 };

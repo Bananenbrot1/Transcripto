@@ -14,9 +14,10 @@ export type { DiarizationState } from './use-diarization';
 interface UseTranscriptionOptions {
   language: string;
   vadOptions?: VADOptions;
+  audioInputDeviceId?: string;
 }
 
-export function useTranscription({ language, vadOptions }: UseTranscriptionOptions) {
+export function useTranscription({ language, vadOptions, audioInputDeviceId }: UseTranscriptionOptions) {
   const [segments, setSegments] = useState<TranscriptSegment[]>(() => loadSession()?.segments ?? []);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [micRMS, setMicRMS] = useState(0);
@@ -127,10 +128,11 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     }
   }, []);
 
+  const audioCaptureOptions = audioInputDeviceId ? { audioInputDeviceId } : undefined;
   const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, isPaused, startCapture, stopCapture, toggleMicMute, togglePause } = useAudioCapture({
     onSpeechEnd,
     onRMS,
-  }, vadOptions);
+  }, vadOptions, audioCaptureOptions);
 
   const { diarizationState, elapsedMs, checkModels, runDiarization } = useDiarization(
     recordingStartTimeRef,

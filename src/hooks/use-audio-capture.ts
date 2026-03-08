@@ -21,7 +21,11 @@ interface AudioCaptureCallbacks {
 
 export type SystemAudioStatus = 'inactive' | 'active' | 'no-permission' | 'failed';
 
-export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: VADOptions) {
+export interface AudioCaptureOptions {
+  audioInputDeviceId?: string; // '' or undefined = system default
+}
+
+export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: VADOptions, options?: AudioCaptureOptions) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [systemAudioStatus, setSystemAudioStatus] = useState<SystemAudioStatus>('inactive');
   const [isMicMuted, setIsMicMuted] = useState(false);
@@ -185,12 +189,16 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
     }
 
     // 1. Mic capture
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      sampleRate: 48000,
+    };
+    if (options?.audioInputDeviceId) {
+      audioConstraints.deviceId = { exact: options.audioInputDeviceId };
+    }
     const micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        sampleRate: 48000,
-      },
+      audio: audioConstraints,
     });
     const micTracks = micStream.getAudioTracks();
     log(`Mic stream: ${micTracks.length} audio tracks, state=${micTracks[0]?.readyState}, enabled=${micTracks[0]?.enabled}`);

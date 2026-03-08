@@ -95,4 +95,5 @@ export interface StoreSchema {
     minSegmentMs: number;
   };
   shortcuts: ShortcutConfig;
+  audioInputDeviceId: string; // '' = system default
 }
