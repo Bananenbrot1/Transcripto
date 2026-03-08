@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mic, MicOff, Settings, Pause, Play } from 'lucide-react';
+import { Mic, MicOff, Settings, Pause, Play, Languages } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
 import { useVADSettings } from '@/hooks/use-vad-settings';
 import { useStoreValue } from '@/hooks/use-store';
 import { applyTemplate, buildExportVariables } from '@/lib/format-export';
+import { LANGUAGES } from '@/lib/languages';
 import { migrateFromLocalStorage } from '@/lib/migrate-local-storage';
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
 import { SettingsDialog } from '@/components/settings-dialog';
@@ -258,6 +259,9 @@ export function App() {
   }
 
   const currentModel = models.find((m) => m.id === selectedModel);
+  const modelDisplayName = currentModel
+    ? currentModel.label.split(' — ')[0].split(' (')[0]
+    : 'Unknown';
   const showPostRecordingBar = recordingState === 'idle' && segments.length > 0;
   const showPermissionBannerInMain = isCapturing && (systemAudioStatus === 'no-permission' || systemAudioStatus === 'failed');
 
@@ -305,6 +309,11 @@ export function App() {
                 </Button>
               </>
             )}
+            <RecordButton
+              recordingState={recordingState}
+              onStart={startRecording}
+              onStop={stopRecording}
+            />
             <Button
               variant="outline"
               size="icon"
@@ -313,11 +322,6 @@ export function App() {
             >
               <Settings className="size-4" />
             </Button>
-            <RecordButton
-              recordingState={recordingState}
-              onStart={startRecording}
-              onStop={stopRecording}
-            />
           </div>
         </div>
       </header>
@@ -359,6 +363,25 @@ export function App() {
           </div>
         )}
       </main>
+
+      <footer className="border-t px-6 py-2 flex items-center gap-3">
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <Languages className="size-3.5" />
+          <select
+            value={selectedLanguage}
+            onChange={(e) => setSelectedLanguage(e.target.value)}
+            disabled={isCapturing}
+            className="bg-transparent text-xs font-medium border-none outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+        </div>
+        <span className="text-xs text-muted-foreground ml-auto">
+          {modelDisplayName}
+        </span>
+      </footer>
 
       {showDebug && (
         <footer className="border-t px-6 py-3 max-h-40 overflow-y-auto">

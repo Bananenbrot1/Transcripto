@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon, Settings2, FileOutput, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -16,8 +16,12 @@ import type { ModelDefinition } from '@/types/transcription';
 
 type AppearanceMode = 'system' | 'light' | 'dark';
 
-const TABS = ['General', 'Export', 'Advanced'] as const;
-type Tab = typeof TABS[number];
+const TABS = [
+  { id: 'General' as const, label: 'General', icon: Settings2 },
+  { id: 'Export' as const, label: 'Export', icon: FileOutput },
+  { id: 'Advanced' as const, label: 'Advanced', icon: SlidersHorizontal },
+];
+type Tab = typeof TABS[number]['id'];
 
 interface SettingsDialogProps {
   open: boolean;
@@ -63,9 +67,9 @@ function fromAppearanceMode(mode: AppearanceMode): boolean | null {
 }
 
 const appearanceOptions: { value: AppearanceMode; label: string; icon: typeof Sun }[] = [
+  { value: 'system', label: 'System', icon: Monitor },
   { value: 'light', label: 'Light', icon: Sun },
   { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'System', icon: Monitor },
 ];
 
 export function SettingsDialog({
@@ -113,17 +117,18 @@ export function SettingsDialog({
       <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden" showCloseButton={false}>
         {/* Tab bar */}
         <div className="flex border-b bg-muted/30 px-4 pt-4 pb-0">
-          {TABS.map((tab) => (
+          {TABS.map(({ id, label, icon: Icon }) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                activeTab === tab
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                activeTab === id
                   ? 'border-primary text-foreground'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              {tab}
+              <Icon className="size-3.5" />
+              {label}
             </button>
           ))}
         </div>
@@ -135,19 +140,19 @@ export function SettingsDialog({
               {/* Appearance */}
               <section className="space-y-3">
                 <h3 className="text-sm font-medium">Appearance</h3>
-                <div className="flex gap-2">
+                <div className="flex rounded-md border bg-muted/50 p-0.5">
                   {appearanceOptions.map(({ value, label, icon: Icon }) => (
                     <button
                       key={value}
                       onClick={() => onDarkModeChange(fromAppearanceMode(value))}
-                      className={`flex-1 flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+                      className={`flex-1 flex items-center justify-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
                         currentAppearance === value
-                          ? 'border-primary bg-primary/5'
-                          : 'border-transparent bg-muted/50 hover:bg-muted'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      <Icon className="size-5" />
-                      <span className="text-xs font-medium">{label}</span>
+                      <Icon className="size-3.5" />
+                      {label}
                     </button>
                   ))}
                 </div>
