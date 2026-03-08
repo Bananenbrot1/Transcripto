@@ -1,30 +1,5 @@
-import { useState, useCallback } from 'react';
-
-const KEYS = {
-  folder: 'transcripto-export-folder',
-  filename: 'transcripto-export-filename',
-  bodyTemplate: 'transcripto-export-body-template',
-  autoSave: 'transcripto-export-auto-save',
-} as const;
-
-const DEFAULT_FILENAME = '{{date}} {{title}}';
-
-const DEFAULT_BODY_TEMPLATE = `# {{title}}
-
-**Date:** {{date}}
-**Duration:** {{duration}}
-
----
-
-{{segments}}`;
-
-function readSetting(key: string, fallback: string): string {
-  try {
-    return localStorage.getItem(key) ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
+import { useCallback } from 'react';
+import { useStoreValue } from './use-store';
 
 export interface ExportSettings {
   folder: string;
@@ -34,45 +9,25 @@ export interface ExportSettings {
 }
 
 export function useExportSettings() {
-  const [folder, setFolderState] = useState(() =>
-    readSetting(KEYS.folder, ''),
-  );
-  const [filenameTemplate, setFilenameTemplateState] = useState(() =>
-    readSetting(KEYS.filename, DEFAULT_FILENAME),
-  );
-  const [bodyTemplate, setBodyTemplateState] = useState(() =>
-    readSetting(KEYS.bodyTemplate, DEFAULT_BODY_TEMPLATE),
-  );
-  const [autoSave, setAutoSaveState] = useState(
-    () => readSetting(KEYS.autoSave, 'false') === 'true',
-  );
+  const [exportData, setExportData] = useStoreValue('export');
 
   const setFolder = useCallback((value: string) => {
-    localStorage.setItem(KEYS.folder, value);
-    setFolderState(value);
-  }, []);
+    setExportData({ ...exportData, folder: value });
+  }, [exportData, setExportData]);
 
   const setFilenameTemplate = useCallback((value: string) => {
-    localStorage.setItem(KEYS.filename, value);
-    setFilenameTemplateState(value);
-  }, []);
+    setExportData({ ...exportData, filenameTemplate: value });
+  }, [exportData, setExportData]);
 
   const setBodyTemplate = useCallback((value: string) => {
-    localStorage.setItem(KEYS.bodyTemplate, value);
-    setBodyTemplateState(value);
-  }, []);
+    setExportData({ ...exportData, bodyTemplate: value });
+  }, [exportData, setExportData]);
 
   const setAutoSave = useCallback((value: boolean) => {
-    localStorage.setItem(KEYS.autoSave, String(value));
-    setAutoSaveState(value);
-  }, []);
+    setExportData({ ...exportData, autoSave: value });
+  }, [exportData, setExportData]);
 
-  const settings: ExportSettings = {
-    folder,
-    filenameTemplate,
-    bodyTemplate,
-    autoSave,
-  };
+  const settings: ExportSettings = exportData;
 
   return {
     settings,

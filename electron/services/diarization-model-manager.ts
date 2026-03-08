@@ -2,8 +2,8 @@ import { app } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { downloadFile } from './download-utils';
-import type { DiarizationDownloadProgress } from '../../shared/types';
+import { downloadFile } from './download-utils.js';
+import type { DiarizationDownloadProgress } from '../../shared/types.js';
 
 export type { DiarizationDownloadProgress };
 

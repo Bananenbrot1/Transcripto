@@ -1,8 +1,8 @@
 import { app } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { downloadFile, type DownloadProgress } from './download-utils';
-import type { ModelDefinition } from '../../shared/types';
+import { downloadFile, type DownloadProgress } from './download-utils.js';
+import type { ModelDefinition } from '../../shared/types.js';
 
 const BASE_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/';
 

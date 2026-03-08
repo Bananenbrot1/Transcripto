@@ -1,11 +1,15 @@
 import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog } from 'electron';
 import * as path from 'node:path';
-import * as modelManager from './services/model-manager';
-import * as whisperService from './services/whisper-service';
-import * as markdownExport from './services/markdown-export';
-import * as diarizationModelManager from './services/diarization-model-manager';
-import * as diarizationService from './services/diarization-service';
-import * as audioFileService from './services/audio-file-service';
+import * as modelManager from './services/model-manager.js';
+import * as whisperService from './services/whisper-service.js';
+import * as markdownExport from './services/markdown-export.js';
+import * as diarizationModelManager from './services/diarization-model-manager.js';
+import * as diarizationService from './services/diarization-service.js';
+import * as audioFileService from './services/audio-file-service.js';
+import * as settingsStore from './services/settings-store.js';
+import type { StoreSchema } from '../shared/types.js';
+
+const __dirname = import.meta.dirname;
 
 const isDev = !app.isPackaged;
 
@@ -122,6 +126,18 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('cleanup-audio-recording', () => {
     audioFileService.cleanup();
+  });
+
+  ipcMain.handle('store-get', (_event, key: string) => {
+    return settingsStore.get(key as keyof StoreSchema);
+  });
+
+  ipcMain.handle('store-set', (_event, key: string, value: unknown) => {
+    settingsStore.set(key as keyof StoreSchema, value as StoreSchema[keyof StoreSchema]);
+  });
+
+  ipcMain.handle('store-get-all', () => {
+    return settingsStore.getAll();
   });
 
   ipcMain.handle('diarize', async (event, numSpeakers: number = -1) => {
