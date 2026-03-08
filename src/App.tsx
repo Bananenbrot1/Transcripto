@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mic, MicOff, Settings, Moon, Sun, Pause, Play } from 'lucide-react';
+import { Mic, MicOff, Settings, Pause, Play } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
@@ -8,7 +8,7 @@ import { useStoreValue } from '@/hooks/use-store';
 import { applyTemplate, buildExportVariables } from '@/lib/format-export';
 import { migrateFromLocalStorage } from '@/lib/migrate-local-storage';
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
-import { ExportSettingsDialog } from '@/components/export-settings-dialog';
+import { SettingsDialog } from '@/components/settings-dialog';
 import { RecordButton } from '@/components/record-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -89,15 +89,22 @@ export function App() {
   const autoInitAttempted = useRef(false);
 
   // Dark mode — null means follow system preference
-  const darkMode = storedDarkMode ?? window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const setDarkMode = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
-    const next = typeof value === 'function' ? value(darkMode) : value;
-    setStoredDarkMode(next);
-  }, [darkMode, setStoredDarkMode]);
+  const [systemDark, setSystemDark] = useState(() =>
+    window.matchMedia('(prefers-color-scheme: dark)').matches,
+  );
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-  }, [darkMode]);
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const resolvedDark = storedDarkMode ?? systemDark;
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', resolvedDark);
+  }, [resolvedDark]);
 
   // Recording timer (pauses correctly by tracking accumulated time)
   const [elapsedRecording, setElapsedRecording] = useState(0);
@@ -301,14 +308,6 @@ export function App() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setDarkMode((d) => !d)}
-              title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
               onClick={() => setSettingsOpen(true)}
               title="Settings"
             >
@@ -374,9 +373,11 @@ export function App() {
         </footer>
       )}
 
-      <ExportSettingsDialog
+      <SettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
+        darkMode={storedDarkMode}
+        onDarkModeChange={setStoredDarkMode}
         settings={exportSettings}
         onFolderChange={setFolder}
         onFilenameTemplateChange={setFilenameTemplate}
