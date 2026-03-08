@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog, globalShortcut } from 'electron';
 import * as path from 'node:path';
 import * as modelManager from './services/model-manager.js';
 import * as whisperService from './services/whisper-service.js';
@@ -7,7 +7,7 @@ import * as diarizationModelManager from './services/diarization-model-manager.j
 import * as diarizationService from './services/diarization-service.js';
 import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
-import type { StoreSchema } from '../shared/types.js';
+import type { StoreSchema, ShortcutConfig, ShortcutAction } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
 
@@ -140,6 +140,33 @@ function registerIpcHandlers(): void {
     return settingsStore.getAll();
   });
 
+  ipcMain.handle('register-shortcuts', (_event, shortcuts: ShortcutConfig) => {
+    globalShortcut.unregisterAll();
+    const results: Record<string, boolean> = {};
+    const actions: ShortcutAction[] = ['toggleRecording', 'togglePause', 'toggleMicMute'];
+    for (const action of actions) {
+      const accelerator = shortcuts[action];
+      if (!accelerator) {
+        results[action] = true;
+        continue;
+      }
+      try {
+        const success = globalShortcut.register(accelerator, () => {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (win) win.webContents.send('shortcut-action', action);
+        });
+        results[action] = success;
+        if (!success) {
+          console.warn(`[main] Failed to register shortcut "${accelerator}" for ${action}`);
+        }
+      } catch (err) {
+        console.warn(`[main] Error registering shortcut "${accelerator}" for ${action}:`, err);
+        results[action] = false;
+      }
+    }
+    return results;
+  });
+
   ipcMain.handle('diarize', async (event, numSpeakers: number = -1) => {
     const start = Date.now();
     const interval = setInterval(() => {
@@ -217,5 +244,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  globalShortcut.unregisterAll();
   audioFileService.cleanup();
 });

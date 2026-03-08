@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress } from './ipc-types';
+import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, ShortcutAction, ShortcutConfig } from './ipc-types';
 
 // Typed against ElectronAPI so the compiler verifies method presence and signatures.
 const api: ElectronAPI = {
@@ -69,6 +69,13 @@ const api: ElectronAPI = {
   storeGet: (key: string) => ipcRenderer.invoke('store-get', key),
   storeSet: (key: string, value: unknown) => ipcRenderer.invoke('store-set', key, value),
   storeGetAll: () => ipcRenderer.invoke('store-get-all'),
+
+  registerShortcuts: (shortcuts: ShortcutConfig) => ipcRenderer.invoke('register-shortcuts', shortcuts),
+  onShortcutAction: (callback: (action: ShortcutAction) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, action: ShortcutAction) => callback(action);
+    ipcRenderer.on('shortcut-action', handler);
+    return () => ipcRenderer.removeListener('shortcut-action', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

@@ -13,6 +13,8 @@ import type {
   DiarizationDownloadProgress,
   MediaPermissions,
   StoreSchema,
+  ShortcutAction,
+  ShortcutConfig,
 } from '../shared/types';
 
 export type {
@@ -23,6 +25,8 @@ export type {
   DiarizationDownloadProgress,
   MediaPermissions,
   StoreSchema,
+  ShortcutAction,
+  ShortcutConfig,
 };
 
 /** All methods exposed on window.electronAPI via contextBridge. */
@@ -54,4 +58,6 @@ export interface ElectronAPI {
   storeGet: <K extends keyof StoreSchema>(key: K) => Promise<StoreSchema[K]>;
   storeSet: <K extends keyof StoreSchema>(key: K, value: StoreSchema[K]) => Promise<void>;
   storeGetAll: () => Promise<StoreSchema>;
+  registerShortcuts: (shortcuts: ShortcutConfig) => Promise<Record<string, boolean>>;
+  onShortcutAction: (callback: (action: ShortcutAction) => void) => () => void;
 }

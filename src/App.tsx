@@ -76,6 +76,8 @@ export function App() {
 
   const [onboardingComplete, setOnboardingComplete] = useStoreValue('onboardingComplete');
   const [storedDarkMode, setStoredDarkMode] = useStoreValue('darkMode');
+  const [shortcuts, setShortcuts] = useStoreValue('shortcuts');
+  const [shortcutStatus, setShortcutStatus] = useState<Record<string, boolean>>({});
 
   // Run one-time migration from localStorage on mount
   useEffect(() => {
@@ -106,6 +108,34 @@ export function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', resolvedDark);
   }, [resolvedDark]);
+
+  // Register global shortcuts with the main process
+  useEffect(() => {
+    const hasAny = shortcuts.toggleRecording || shortcuts.togglePause || shortcuts.toggleMicMute;
+    if (!hasAny) {
+      setShortcutStatus({});
+      return;
+    }
+    window.electronAPI.registerShortcuts(shortcuts).then(setShortcutStatus);
+  }, [shortcuts]);
+
+  // Listen for global shortcut actions from the main process
+  useEffect(() => {
+    return window.electronAPI.onShortcutAction((action) => {
+      switch (action) {
+        case 'toggleRecording':
+          if (recordingState === 'idle') startRecording();
+          else if (recordingState === 'recording') stopRecording();
+          break;
+        case 'togglePause':
+          if (recordingState === 'recording') togglePause();
+          break;
+        case 'toggleMicMute':
+          if (isCapturing) toggleMicMute();
+          break;
+      }
+    });
+  }, [recordingState, isCapturing, startRecording, stopRecording, togglePause, toggleMicMute]);
 
   // Recording timer (pauses correctly by tracking accumulated time)
   const [elapsedRecording, setElapsedRecording] = useState(0);
@@ -422,6 +452,9 @@ export function App() {
         models={models}
         downloadedModels={downloadedModels}
         onDeleteModel={deleteModel}
+        shortcuts={shortcuts}
+        shortcutStatus={shortcutStatus}
+        onShortcutsChange={setShortcuts}
       />
 
       {dismissToast && (
