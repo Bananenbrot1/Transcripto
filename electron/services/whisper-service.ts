@@ -12,7 +12,8 @@ function log(...args: unknown[]) {
 }
 // Maximum segments that may be queued (running + waiting) per source.
 // Excess segments are dropped rather than piling up unboundedly in memory.
-const MAX_QUEUE_DEPTH = 3;
+// Kept high enough so that mic + system can both run without dropping when both are active.
+const MAX_QUEUE_DEPTH = 10;
 
 let micContext: WhisperContext | null = null;
 let sysContext: WhisperContext | null = null;
