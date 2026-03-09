@@ -41,9 +41,6 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
   const micPendingRef = useRef<Float32Array[]>([]);
   const sysPendingRef = useRef<Float32Array[]>([]);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Hold-off timer for releasing mic gate after system audio speech ends
-  const micGateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const MIC_GATE_HOLDOFF_MS = 1200;
 
   // RMS throttle: only push state updates at ~15fps via requestAnimationFrame
   const micRMSRef = useRef(0);
@@ -225,27 +222,6 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
           sysPipeline.current = await createPipeline(displayStream, 'system');
           setSystemAudioStatus('active');
           log('System audio pipeline created successfully');
-
-          // Cross-gate: when system audio speech is active, suppress the mic
-          // VAD so that speaker output picked up by the mic isn't transcribed.
-          const micVAD = micPipeline.current?.vad;
-          if (micVAD) {
-            sysPipeline.current.vad.setSpeechStateCallback((isSpeaking) => {
-              if (isSpeaking) {
-                if (micGateTimerRef.current !== null) {
-                  clearTimeout(micGateTimerRef.current);
-                  micGateTimerRef.current = null;
-                }
-                micVAD.setGated(true);
-              } else {
-                micGateTimerRef.current = setTimeout(() => {
-                  micVAD.setGated(false);
-                  micGateTimerRef.current = null;
-                }, MIC_GATE_HOLDOFF_MS);
-              }
-            });
-            log(`Mic cross-gate wired (holdoff=${MIC_GATE_HOLDOFF_MS}ms)`);
-          }
         } else if (audioTracks.length > 0 && audioTracks[0].readyState === 'ended') {
           log('Audio track exists but state=ended → missing "System Audio Recording" permission');
           setSystemAudioStatus('no-permission');
@@ -277,11 +253,6 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
     if (flushIntervalRef.current !== null) {
       clearInterval(flushIntervalRef.current);
       flushIntervalRef.current = null;
-    }
-    // Cancel any pending mic gate release
-    if (micGateTimerRef.current !== null) {
-      clearTimeout(micGateTimerRef.current);
-      micGateTimerRef.current = null;
     }
     // Cancel pending RMS animation frame
     if (rmsRafRef.current !== null) {
