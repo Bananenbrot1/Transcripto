@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mic, MicOff, Settings, Pause, Play, Languages } from 'lucide-react';
+import { Mic, MicOff, Settings, Pause, Play, Languages, ClipboardCopy } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
 import { useVADSettings } from '@/hooks/use-vad-settings';
 import { useStoreValue } from '@/hooks/use-store';
-import { applyTemplate, buildExportVariables } from '@/lib/format-export';
+import { applyTemplate, buildExportVariables, renderSegments } from '@/lib/format-export';
 import { LANGUAGES } from '@/lib/languages';
 import { migrateFromLocalStorage } from '@/lib/migrate-local-storage';
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
@@ -70,6 +70,8 @@ export function App() {
     togglePause,
     runDiarization,
     renameSpeaker,
+    updateSegmentText,
+    deleteSegment,
     dismissTranscript,
     restoreTranscript,
   } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings });
@@ -87,6 +89,16 @@ export function App() {
   const [title, setTitle] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyAll = useCallback(() => {
+    if (segments.length === 0) return;
+    const text = renderSegments(segments);
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [segments]);
   const [showDebug, setShowDebug] = useState(false);
   const prevRecordingState = useRef(recordingState);
   const autoInitAttempted = useRef(false);
@@ -358,7 +370,13 @@ export function App() {
 
       <main className="flex-1 overflow-hidden flex flex-col px-6 py-4 gap-3">
         {showPermissionBannerInMain && <PermissionBanner />}
-        <TranscriptPanel segments={segments} speakerNames={speakerNames} onRenameSpeaker={renameSpeaker} />
+        <TranscriptPanel
+          segments={segments}
+          speakerNames={speakerNames}
+          onRenameSpeaker={renameSpeaker}
+          onUpdateText={updateSegmentText}
+          onDeleteSegment={deleteSegment}
+        />
         {showPostRecordingBar && (
           <div className="shrink-0 flex items-center gap-2 pb-1">
             <Input
@@ -369,6 +387,15 @@ export function App() {
             />
             <DiarizationControls diarizationState={diarizationState} onAnalyze={runDiarization} elapsedMs={elapsedMs} />
             <div className="ml-auto flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopyAll}
+                title="Copy transcript to clipboard"
+              >
+                <ClipboardCopy className="size-3.5" />
+                {copied ? 'Copied!' : 'Copy'}
+              </Button>
               {saveStatus === 'saved' && (
                 <span className="text-xs text-green-600 font-medium">Saved!</span>
               )}
