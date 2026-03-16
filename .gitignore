@@ -6,3 +6,5 @@ out/
 models/
 .DS_Store
 *.dmg
+.ralph/
+.ralphex/

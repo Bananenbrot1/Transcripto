@@ -1,6 +1,6 @@
 {
   "name": "transcripto",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Transcripto Electron App",
   "type": "module",
   "main": "dist-electron/electron/main.js",
@@ -18,17 +18,17 @@
   "packageManager": "pnpm@10.27.0",
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.1",
-    "@types/node": "^25.3.5",
+    "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.4",
+    "@vitejs/plugin-react": "^5.2.0",
     "concurrently": "^9.2.1",
-    "electron": "^40.8.0",
+    "electron": "^40.8.2",
     "electron-builder": "^26.8.1",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
-    "vitest": "^4.0.18",
+    "vitest": "^4.1.0",
     "wait-on": "^9.0.4"
   },
   "pnpm": {
@@ -48,11 +48,11 @@
     "clsx": "^2.1.1",
     "electron-store": "^11.0.2",
     "lucide-react": "^0.575.0",
-    "motion": "^12.35.1",
+    "motion": "^12.37.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "sherpa-onnx-node": "^1.12.28",
+    "sherpa-onnx-node": "^1.12.29",
     "tailwind-merge": "^3.5.0"
   }
 }
