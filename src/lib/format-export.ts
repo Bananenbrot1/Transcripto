@@ -37,7 +37,7 @@ function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
-function renderSegments(segments: TranscriptSegment[]): string {
+export function renderSegments(segments: TranscriptSegment[]): string {
   return segments
     .map((seg) => {
       const time = formatTimestamp(seg.timestamp);

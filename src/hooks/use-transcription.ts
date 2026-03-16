@@ -176,6 +176,14 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     setSpeakerNames((prev) => ({ ...prev, [speakerId]: name }));
   }, []);
 
+  const updateSegmentText = useCallback((id: string, text: string) => {
+    setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, text } : s)));
+  }, []);
+
+  const deleteSegment = useCallback((id: string) => {
+    setSegments((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
   const dismissTranscript = useCallback(() => {
     clearSession();
     setSegments([]);
@@ -212,6 +220,8 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     togglePause,
     runDiarization,
     renameSpeaker,
+    updateSegmentText,
+    deleteSegment,
     dismissTranscript,
     restoreTranscript,
   };
