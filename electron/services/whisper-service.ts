@@ -13,7 +13,10 @@ function log(...args: unknown[]) {
 // Maximum segments that may be queued (running + waiting) per source.
 // Excess segments are dropped rather than piling up unboundedly in memory.
 // Kept high enough so that mic + system can both run without dropping when both are active.
-const MAX_QUEUE_DEPTH = 10;
+// Increased for long meetings where speech can outpace transcription.
+const MAX_QUEUE_DEPTH = 50;
+// When queue is full, wait up to this long for a slot before dropping the segment.
+const QUEUE_FULL_WAIT_MS = 120_000;
 
 let micContext: WhisperContext | null = null;
 let sysContext: WhisperContext | null = null;
@@ -128,15 +131,21 @@ async function doTranscribe(
   return result;
 }
 
-export function transcribe(
+export async function transcribe(
   source: 'mic' | 'system',
   audioBuffer: ArrayBuffer,
   language: string,
 ): Promise<TranscribeResult> {
-  const depth = source === 'mic' ? micQueueDepth : sysQueueDepth;
-  if (depth >= MAX_QUEUE_DEPTH) {
-    log(`[whisper] queue full (depth=${depth}) for source=${source} — dropping segment`);
-    return Promise.reject(new Error(`Whisper queue full for ${source}, segment dropped`));
+  const start = Date.now();
+  while (true) {
+    const depth = source === 'mic' ? micQueueDepth : sysQueueDepth;
+    if (depth < MAX_QUEUE_DEPTH) break;
+    if (Date.now() - start >= QUEUE_FULL_WAIT_MS) {
+      log(`[whisper] queue full (depth=${depth}) for source=${source} after waiting ${QUEUE_FULL_WAIT_MS}ms — dropping segment`);
+      throw new Error(`Whisper queue full for ${source}, segment dropped`);
+    }
+    log(`[whisper] queue full (depth=${depth}) for source=${source}, waiting for slot...`);
+    await new Promise((r) => setTimeout(r, 500));
   }
 
   if (source === 'mic') micQueueDepth++;
