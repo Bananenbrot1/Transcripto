@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon, Settings2, FileOutput, SlidersHorizontal, Keyboard, AlertCircle, X } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon, Settings2, FileOutput, SlidersHorizontal, Keyboard, AlertCircle, X, Sparkles, Check, Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { LANGUAGES } from '@/lib/languages';
 import type { ExportSettings } from '@/hooks/use-export-settings';
+import type { SummarySettings } from '@/hooks/use-summary-settings';
 import type { VADSettings } from '@/hooks/use-vad-settings';
 import type { ModelDefinition } from '@/types/transcription';
 import type { ShortcutConfig, ShortcutAction } from '../../shared/types';
@@ -19,6 +20,7 @@ type AppearanceMode = 'system' | 'light' | 'dark';
 
 const TABS = [
   { id: 'General' as const, label: 'General', icon: Settings2 },
+  { id: 'AI Summary' as const, label: 'AI Summary', icon: Sparkles },
   { id: 'Export' as const, label: 'Export', icon: FileOutput },
   { id: 'Shortcuts' as const, label: 'Shortcuts', icon: Keyboard },
   { id: 'Advanced' as const, label: 'Advanced', icon: SlidersHorizontal },
@@ -45,7 +47,13 @@ interface SettingsDialogProps {
   onFolderChange: (folder: string) => void;
   onFilenameTemplateChange: (template: string) => void;
   onBodyTemplateChange: (template: string) => void;
-  onAutoSaveChange: (enabled: boolean) => void;
+  // Summary
+  summarySettings: SummarySettings;
+  summaryDecryptedKey: string;
+  onSummaryApiBaseUrlChange: (url: string) => void;
+  onSummaryApiKeyChange: (key: string) => Promise<void>;
+  onSummaryModelIdChange: (modelId: string) => void;
+  onSummaryPromptTemplateChange: (template: string) => void;
   // VAD
   vadSettings: VADSettings;
   onSilenceThresholdChange: (v: number) => void;
@@ -211,6 +219,155 @@ function ShortcutRecorder({
   );
 }
 
+function SummarySettingsTab({
+  settings,
+  decryptedKey,
+  onApiBaseUrlChange,
+  onApiKeyChange,
+  onModelIdChange,
+  onPromptTemplateChange,
+}: {
+  settings: SummarySettings;
+  decryptedKey: string;
+  onApiBaseUrlChange: (url: string) => void;
+  onApiKeyChange: (key: string) => Promise<void>;
+  onModelIdChange: (modelId: string) => void;
+  onPromptTemplateChange: (template: string) => void;
+}) {
+  const [showKey, setShowKey] = useState(false);
+  const [keyInput, setKeyInput] = useState('');
+  const [keyInitialized, setKeyInitialized] = useState(false);
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testError, setTestError] = useState('');
+
+  // Initialize key input from decrypted value
+  useEffect(() => {
+    if (!keyInitialized && decryptedKey !== undefined) {
+      setKeyInput(decryptedKey);
+      setKeyInitialized(true);
+    }
+  }, [decryptedKey, keyInitialized]);
+
+  const handleKeyBlur = () => {
+    if (keyInput !== decryptedKey) {
+      onApiKeyChange(keyInput);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTestStatus('testing');
+    setTestError('');
+    try {
+      const result = await window.electronAPI.testSummaryConnection();
+      if (result.success) {
+        setTestStatus('success');
+      } else {
+        setTestStatus('error');
+        setTestError(result.error || 'Unknown error');
+      }
+    } catch (err) {
+      setTestStatus('error');
+      setTestError((err as Error).message);
+    }
+  };
+
+  return (
+    <>
+      <section className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="summary-base-url">API Base URL</Label>
+          <Input
+            id="summary-base-url"
+            value={settings.apiBaseUrl}
+            onChange={(e) => onApiBaseUrlChange(e.target.value)}
+            placeholder="https://openrouter.ai/api/v1"
+          />
+          <p className="text-xs text-muted-foreground">
+            OpenAI-compatible endpoint (OpenRouter, LiteLLM, etc.)
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="summary-api-key">API Key</Label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                id="summary-api-key"
+                type={showKey ? 'text' : 'password'}
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                onBlur={handleKeyBlur}
+                placeholder="sk-..."
+                className="pr-9"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Stored encrypted on your machine
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="summary-model">Model</Label>
+          <Input
+            id="summary-model"
+            value={settings.modelId}
+            onChange={(e) => onModelIdChange(e.target.value)}
+            placeholder="anthropic/claude-sonnet-4-20250514"
+          />
+          <p className="text-xs text-muted-foreground">
+            Model ID from your provider (e.g. OpenRouter model slug)
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="summary-prompt">Prompt Template</Label>
+          <Textarea
+            id="summary-prompt"
+            value={settings.promptTemplate}
+            onChange={(e) => onPromptTemplateChange(e.target.value)}
+            rows={6}
+            className="font-mono text-xs"
+          />
+          <p className="text-xs text-muted-foreground">
+            Available: {'{{transcript}}'}, {'{{title}}'}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTestConnection}
+            disabled={testStatus === 'testing' || !keyInput}
+          >
+            {testStatus === 'testing' && <Loader2 className="size-3.5 animate-spin" />}
+            {testStatus === 'success' && <Check className="size-3.5 text-green-600" />}
+            {testStatus === 'error' && <AlertCircle className="size-3.5 text-destructive" />}
+            {testStatus === 'idle' && <Sparkles className="size-3.5" />}
+            Test Connection
+          </Button>
+          {testStatus === 'success' && (
+            <span className="text-xs text-green-600 font-medium">Connected successfully</span>
+          )}
+          {testStatus === 'error' && (
+            <span className="text-xs text-destructive font-medium truncate max-w-[250px]" title={testError}>
+              {testError}
+            </span>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
+
 export function SettingsDialog({
   open,
   onOpenChange,
@@ -228,7 +385,12 @@ export function SettingsDialog({
   onFolderChange,
   onFilenameTemplateChange,
   onBodyTemplateChange,
-  onAutoSaveChange,
+  summarySettings,
+  summaryDecryptedKey,
+  onSummaryApiBaseUrlChange,
+  onSummaryApiKeyChange,
+  onSummaryModelIdChange,
+  onSummaryPromptTemplateChange,
   vadSettings,
   onSilenceThresholdChange,
   onSilenceDurationMsChange,
@@ -260,21 +422,21 @@ export function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden" showCloseButton={false}>
+      <DialogContent className="sm:max-w-xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
         {/* Tab bar */}
         <div className="flex border-b bg-muted/30 px-4 pt-4 pb-0">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              title={label}
+              className={`flex-1 flex items-center justify-center py-2 border-b-2 transition-colors -mb-px ${
                 activeTab === id
                   ? 'border-primary text-foreground'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Icon className="size-3.5" />
-              {label}
+              <Icon className="size-5" />
             </button>
           ))}
         </div>
@@ -368,6 +530,17 @@ export function SettingsDialog({
             </>
           )}
 
+          {activeTab === 'AI Summary' && (
+            <SummarySettingsTab
+              settings={summarySettings}
+              decryptedKey={summaryDecryptedKey}
+              onApiBaseUrlChange={onSummaryApiBaseUrlChange}
+              onApiKeyChange={onSummaryApiKeyChange}
+              onModelIdChange={onSummaryModelIdChange}
+              onPromptTemplateChange={onSummaryPromptTemplateChange}
+            />
+          )}
+
           {activeTab === 'Export' && (
             <>
               <section className="space-y-4">
@@ -411,23 +584,10 @@ export function SettingsDialog({
                     className="font-mono text-xs"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Available: {'{{title}}'}, {'{{date}}'}, {'{{time}}'}, {'{{duration}}'}, {'{{segments}}'}
+                    Available: {'{{title}}'}, {'{{date}}'}, {'{{time}}'}, {'{{duration}}'}, {'{{segments}}'}, {'{{summary}}'}
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="auto-save">Auto-save on stop</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Automatically save when recording stops
-                    </p>
-                  </div>
-                  <Switch
-                    id="auto-save"
-                    checked={settings.autoSave}
-                    onCheckedChange={onAutoSaveChange}
-                  />
-                </div>
               </section>
             </>
           )}

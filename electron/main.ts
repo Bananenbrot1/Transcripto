@@ -7,6 +7,7 @@ import * as diarizationModelManager from './services/diarization-model-manager.j
 import * as diarizationService from './services/diarization-service.js';
 import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
+import * as summaryService from './services/summary-service.js';
 import type { StoreSchema, ShortcutConfig, ShortcutAction } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
@@ -165,6 +166,22 @@ function registerIpcHandlers(): void {
       }
     }
     return results;
+  });
+
+  ipcMain.handle('encrypt-string', (_event, plaintext: string) => {
+    return summaryService.encryptString(plaintext);
+  });
+
+  ipcMain.handle('decrypt-string', (_event, encrypted: string) => {
+    return summaryService.decryptString(encrypted);
+  });
+
+  ipcMain.handle('test-summary-connection', async () => {
+    return summaryService.testConnection();
+  });
+
+  ipcMain.handle('summarize', async (_event, transcript: string, title: string) => {
+    return summaryService.summarize(transcript, title);
   });
 
   ipcMain.handle('diarize', async (event, numSpeakers: number = -1) => {

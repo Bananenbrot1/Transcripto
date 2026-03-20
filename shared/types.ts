@@ -69,6 +69,15 @@ export interface MediaPermissions {
   screen: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
 }
 
+export interface SummaryResult {
+  text: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+}
+
 export type ShortcutAction = 'toggleRecording' | 'togglePause' | 'toggleMicMute';
 
 export interface ShortcutConfig {
@@ -86,7 +95,12 @@ export interface StoreSchema {
     folder: string;
     filenameTemplate: string;
     bodyTemplate: string;
-    autoSave: boolean;
+  };
+  summary: {
+    apiBaseUrl: string;
+    apiKey: string;       // encrypted via safeStorage
+    modelId: string;
+    promptTemplate: string;
   };
   vad: {
     silenceThreshold: number;

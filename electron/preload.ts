@@ -76,6 +76,11 @@ const api: ElectronAPI = {
     ipcRenderer.on('shortcut-action', handler);
     return () => ipcRenderer.removeListener('shortcut-action', handler);
   },
+
+  encryptString: (plaintext: string) => ipcRenderer.invoke('encrypt-string', plaintext),
+  decryptString: (encrypted: string) => ipcRenderer.invoke('decrypt-string', encrypted),
+  testSummaryConnection: () => ipcRenderer.invoke('test-summary-connection'),
+  summarize: (transcript: string, title: string) => ipcRenderer.invoke('summarize', transcript, title),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

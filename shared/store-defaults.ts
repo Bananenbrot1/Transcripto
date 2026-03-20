@@ -13,10 +13,21 @@ export const STORE_DEFAULTS: StoreSchema = {
 **Date:** {{date}}
 **Duration:** {{duration}}
 
+{{summary}}
+
 ---
 
 {{segments}}`,
-    autoSave: false,
+  },
+  summary: {
+    apiBaseUrl: 'https://openrouter.ai/api/v1',
+    apiKey: '',
+    modelId: 'anthropic/claude-sonnet-4-20250514',
+    promptTemplate: `Summarize the following meeting transcript titled "{{title}}".
+Highlight key decisions, action items, and topics discussed.
+Use markdown formatting.
+
+{{transcript}}`,
   },
   vad: {
     silenceThreshold: 0.01,

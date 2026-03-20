@@ -5,7 +5,6 @@ export interface ExportSettings {
   folder: string;
   filenameTemplate: string;
   bodyTemplate: string;
-  autoSave: boolean;
 }
 
 export function useExportSettings() {
@@ -23,10 +22,6 @@ export function useExportSettings() {
     setExportData({ ...exportData, bodyTemplate: value });
   }, [exportData, setExportData]);
 
-  const setAutoSave = useCallback((value: boolean) => {
-    setExportData({ ...exportData, autoSave: value });
-  }, [exportData, setExportData]);
-
   const settings: ExportSettings = exportData;
 
   return {
@@ -34,6 +29,5 @@ export function useExportSettings() {
     setFolder,
     setFilenameTemplate,
     setBodyTemplate,
-    setAutoSave,
   };
 }

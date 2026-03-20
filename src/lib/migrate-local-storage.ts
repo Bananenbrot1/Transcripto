@@ -33,8 +33,6 @@ export async function migrateFromLocalStorage(): Promise<void> {
     if (filename) exportSettings.filenameTemplate = filename;
     const body = localStorage.getItem('transcripto-export-body-template');
     if (body) exportSettings.bodyTemplate = body;
-    const autoSave = localStorage.getItem('transcripto-export-auto-save');
-    if (autoSave) exportSettings.autoSave = autoSave === 'true';
     await window.electronAPI.storeSet('export', exportSettings);
 
     // VAD settings (grouped)
