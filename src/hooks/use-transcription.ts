@@ -198,15 +198,6 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     setSpeakerNames(restoredSpeakerNames);
   }, []);
 
-  const importFileSegments = useCallback((newSegments: TranscriptSegment[]) => {
-    clearSession();
-    setSegments(newSegments);
-    setSpeakerNames({});
-    setRecordingStartTime(0);
-    recordingStartTimeRef.current = 0;
-    segmentCounterRef.current = newSegments.length;
-  }, []);
-
   const appendFileSegments = useCallback((newSegments: TranscriptSegment[]) => {
     setSegments((prev) => [...prev, ...newSegments]);
     segmentCounterRef.current += newSegments.length;
@@ -238,7 +229,6 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     deleteSegment,
     dismissTranscript,
     restoreTranscript,
-    importFileSegments,
     appendFileSegments,
   };
 }

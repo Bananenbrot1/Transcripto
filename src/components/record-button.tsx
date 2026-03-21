@@ -6,9 +6,10 @@ interface RecordButtonProps {
   recordingState: RecordingState;
   onStart: () => void;
   onStop: () => void;
+  disabled?: boolean;
 }
 
-export function RecordButton({ recordingState, onStart, onStop }: RecordButtonProps) {
+export function RecordButton({ recordingState, onStart, onStop, disabled }: RecordButtonProps) {
   if (recordingState === 'stopping') {
     return (
       <Button variant="secondary" disabled>
@@ -28,7 +29,7 @@ export function RecordButton({ recordingState, onStart, onStop }: RecordButtonPr
   }
 
   return (
-    <Button onClick={onStart}>
+    <Button onClick={onStart} disabled={disabled}>
       <Mic className="size-4" />
       Start Recording
     </Button>

@@ -45,12 +45,10 @@ function resampleTo16kMono(audioBuffer: AudioBuffer): Float32Array {
   return output;
 }
 
-let segmentIdCounter = 0;
-
-function transcribeSegmentsToTranscript(segments: TranscribeSegment[]): TranscriptSegment[] {
+function transcribeSegmentsToTranscript(segments: TranscribeSegment[], counterRef: React.RefObject<number>): TranscriptSegment[] {
   const now = Date.now();
   return segments.map((seg) => ({
-    id: `file-seg-${++segmentIdCounter}`,
+    id: `file-seg-${++counterRef.current}`,
     source: 'file' as const,
     speaker: 'Speaker',
     text: seg.text,
@@ -66,6 +64,7 @@ export function useFileImport({ language, onImportStart, onSegmentsBatch, onTitl
   const [fileProgress, setFileProgress] = useState<FileTranscribeProgress | null>(null);
   const [fileDurationSec, setFileDurationSec] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
+  const segmentCounterRef = useRef(0);
   const languageRef = useRef(language);
   languageRef.current = language;
 
@@ -83,7 +82,7 @@ export function useFileImport({ language, onImportStart, onSegmentsBatch, onTitl
       setFileImportState('decoding');
       setErrorMessage('');
       setFileProgress(null);
-      segmentIdCounter = 0;
+      segmentCounterRef.current = 0;
 
       // Decode audio using Web Audio API
       const audioCtx = new AudioContext();
@@ -106,7 +105,7 @@ export function useFileImport({ language, onImportStart, onSegmentsBatch, onTitl
       const unsubscribe = window.electronAPI.onTranscribeFileProgress((progress) => {
         setFileProgress(progress);
         if (progress.newSegments.length > 0) {
-          const transcriptSegs = transcribeSegmentsToTranscript(progress.newSegments);
+          const transcriptSegs = transcribeSegmentsToTranscript(progress.newSegments, segmentCounterRef);
           onSegmentsBatch(transcriptSegs);
         }
       });

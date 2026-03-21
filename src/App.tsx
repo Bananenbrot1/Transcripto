@@ -88,7 +88,6 @@ export function App() {
     deleteSegment,
     dismissTranscript,
     restoreTranscript,
-    importFileSegments,
     appendFileSegments,
   } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings });
 
@@ -437,6 +436,7 @@ export function App() {
               recordingState={recordingState}
               onStart={handleStartRecording}
               onStop={stopRecording}
+              disabled={isFileBusy}
             />
             <Button
               variant="outline"
