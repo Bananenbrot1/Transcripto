@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig } from './ipc-types';
+import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest } from './ipc-types';
 
 // Typed against ElectronAPI so the compiler verifies method presence and signatures.
 const api: ElectronAPI = {
@@ -81,6 +81,7 @@ const api: ElectronAPI = {
   decryptString: (encrypted: string) => ipcRenderer.invoke('decrypt-string', encrypted),
   testSummaryConnection: () => ipcRenderer.invoke('test-summary-connection'),
   summarize: (transcript: string, title: string) => ipcRenderer.invoke('summarize', transcript, title),
+  liveSummarize: (request: LiveSummarizeRequest) => ipcRenderer.invoke('live-summarize', request),
 
   transcribeFile: (audioBuffer: ArrayBuffer, language: string, totalDurationSec: number) =>
     ipcRenderer.invoke('transcribe-file', audioBuffer, language, totalDurationSec),

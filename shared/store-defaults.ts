@@ -44,4 +44,19 @@ Write the summary in {{language}}.
     togglePause: null,
     toggleMicMute: null,
   },
+  liveSummary: {
+    enabled: false,
+    intervalSeconds: 60,
+    splitPosition: 50,
+    formatTemplate: `Available sections (only include those with substance):
+### Key Topics
+### Decisions
+### Action Items
+### Open Points
+(Things raised but not yet resolved — remove once addressed)
+### Recommendations
+(Important topics not yet covered given the nature of this meeting — remove once discussed)
+### Discussion
+Use bullet points. Keep it concise. Omit any section that has no content yet.`,
+  },
 };

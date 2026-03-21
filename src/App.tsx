@@ -7,6 +7,7 @@ import { useSummarySettings } from '@/hooks/use-summary-settings';
 import { useVADSettings } from '@/hooks/use-vad-settings';
 import { useStoreValue } from '@/hooks/use-store';
 import { useFileImport } from '@/hooks/use-file-import';
+import { useLiveSummary } from '@/hooks/use-live-summary';
 import { applyTemplate, buildExportVariables, renderSegments, formatTranscriptForPrompt } from '@/lib/format-export';
 import { LANGUAGES } from '@/lib/languages';
 import { migrateFromLocalStorage } from '@/lib/migrate-local-storage';
@@ -21,7 +22,10 @@ import { AudioSourceIndicator, PermissionBanner } from '@/components/audio-sourc
 import { TranscriptPanel } from '@/components/transcript-panel';
 import { DiarizationControls } from '@/components/diarization-controls';
 import { SummaryPanel } from '@/components/summary-panel';
+import { LiveNotesPanel } from '@/components/live-notes-panel';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import type { SummaryResult } from '../shared/types';
+import { STORE_DEFAULTS } from '../shared/store-defaults';
 
 export function App() {
   const {
@@ -113,6 +117,21 @@ export function App() {
   const [onboardingComplete, setOnboardingComplete] = useStoreValue('onboardingComplete');
   const [storedDarkMode, setStoredDarkMode] = useStoreValue('darkMode');
   const [shortcuts, setShortcuts] = useStoreValue('shortcuts');
+  const [liveSummarySettings, setLiveSummarySettings] = useStoreValue('liveSummary');
+
+  const {
+    liveSummary,
+    liveSummaryStatus,
+    liveSummaryError,
+    corrections,
+    addCorrection,
+    removeCorrection,
+  } = useLiveSummary({
+    segments,
+    isRecording: recordingState === 'recording',
+    liveSummarySettings,
+    hasSummaryApiKey: hasSummaryApiKey,
+  });
   const [shortcutStatus, setShortcutStatus] = useState<Record<string, boolean>>({});
 
   // Run one-time migration from localStorage on mount
@@ -141,10 +160,52 @@ export function App() {
   const [summary, setSummary] = useState<SummaryResult | null>(() => loadSession()?.summary ?? null);
   const [summaryStatus, setSummaryStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [summaryError, setSummaryError] = useState('');
+  const [summaryFromLiveNotes, setSummaryFromLiveNotes] = useState(false);
   // Persist summary to localStorage whenever it changes
   useEffect(() => {
     saveSummary(summary);
   }, [summary]);
+
+  // Track live summary ref for carry-over on recording stop
+  const prevLiveSummaryRef = useRef<typeof liveSummary>(null);
+  useEffect(() => {
+    prevLiveSummaryRef.current = liveSummary;
+  }, [liveSummary]);
+
+  // When recording stops and we have live summary, run the final full-transcript upgrade pass
+  const prevRecordingState = useRef(recordingState);
+  const [upgradingFinalSummary, setUpgradingFinalSummary] = useState(false);
+  useEffect(() => {
+    if (prevRecordingState.current === 'recording' && recordingState !== 'recording' && prevLiveSummaryRef.current) {
+      // Immediately show the live draft
+      setSummary(prevLiveSummaryRef.current);
+      setSummaryFromLiveNotes(true);
+      setActiveMainTab('summary');
+
+      // Kick off upgrade pass with full transcript
+      setUpgradingFinalSummary(true);
+      const allSegments = segments.map((s) => ({
+        speaker: s.speaker,
+        text: s.text,
+        timestamp: s.timestamp,
+      }));
+      window.electronAPI.liveSummarize({
+        previousSummary: '',
+        corrections,
+        recentSegments: allSegments,
+        formatTemplate: liveSummarySettings.formatTemplate,
+        isFinal: true,
+      }).then((result) => {
+        setSummary(result);
+      }).catch((err) => {
+        console.error('[live-summary] Final upgrade pass failed, keeping live draft:', err);
+        // Keep the live draft — don't overwrite
+      }).finally(() => {
+        setUpgradingFinalSummary(false);
+      });
+    }
+    prevRecordingState.current = recordingState;
+  }, [recordingState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const autoInitAttempted = useRef(false);
 
@@ -178,6 +239,7 @@ export function App() {
 
   const handleStartRecording = useCallback(() => {
     setSummary(null);
+    setSummaryFromLiveNotes(false);
     setActiveMainTab('transcript');
     startRecording();
   }, [startRecording]);
@@ -291,6 +353,7 @@ export function App() {
     setTitle('');
     setSaveStatus('idle');
     setSummary(null);
+    setSummaryFromLiveNotes(false);
     setActiveMainTab('transcript');
     resetFileImport();
   }, [dismissTranscript, segments, speakerNames, title, resetFileImport]);
@@ -368,6 +431,7 @@ export function App() {
   const isFileBusy = fileImportState === 'decoding' || fileImportState === 'transcribing';
   const showPostRecordingBar = recordingState === 'idle' && segments.length > 0 && !isFileBusy;
   const showPermissionBannerInMain = isCapturing && (systemAudioStatus === 'no-permission' || systemAudioStatus === 'failed');
+  const showLiveSplitPane = recordingState === 'recording' && liveSummarySettings.enabled && hasSummaryApiKey;
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -461,41 +525,90 @@ export function App() {
 
       <main className="flex-1 overflow-hidden flex flex-col px-6 py-4 gap-3">
         {showPermissionBannerInMain && <PermissionBanner />}
-        {summary && showPostRecordingBar && (
-          <div className="flex border-b -mx-6 px-6 shrink-0">
-            <button
-              onClick={() => setActiveMainTab('transcript')}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                activeMainTab === 'transcript'
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Transcript
-            </button>
-            <button
-              onClick={() => setActiveMainTab('summary')}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                activeMainTab === 'summary'
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Summary
-            </button>
-          </div>
+        {showLiveSplitPane ? (
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="flex-1 min-h-0"
+            onLayoutChanged={(layout) => {
+              const leftSize = layout['transcript-panel'];
+              if (leftSize != null) {
+                setLiveSummarySettings({ ...liveSummarySettings, splitPosition: leftSize });
+              }
+            }}
+          >
+            <ResizablePanel id="transcript-panel" defaultSize={liveSummarySettings.splitPosition} minSize={15}>
+              <TranscriptPanel
+                segments={segments}
+                speakerNames={speakerNames}
+                onRenameSpeaker={renameSpeaker}
+                onUpdateText={updateSegmentText}
+                onDeleteSegment={deleteSegment}
+              />
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel id="live-notes-panel" defaultSize={100 - liveSummarySettings.splitPosition} minSize={15}>
+              <div className="h-full pl-3">
+                <LiveNotesPanel
+                  summary={liveSummary}
+                  status={liveSummaryStatus}
+                  error={liveSummaryError}
+                  corrections={corrections}
+                  onAddCorrection={addCorrection}
+                  onRemoveCorrection={removeCorrection}
+                  onInlineEdit={(oldText, newText) => {
+                    addCorrection(`Changed "${oldText.slice(0, 50)}" to "${newText.slice(0, 50)}"`);
+                  }}
+                />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <>
+            {((summary && showPostRecordingBar) || (liveSummary && !showLiveSplitPane)) && (
+              <div className="flex border-b -mx-6 px-6 shrink-0">
+                <button
+                  onClick={() => setActiveMainTab('transcript')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                    activeMainTab === 'transcript'
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Transcript
+                </button>
+                <button
+                  onClick={() => setActiveMainTab('summary')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                    activeMainTab === 'summary'
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Summary
+                </button>
+              </div>
+            )}
+            {activeMainTab === 'transcript' ? (
+              <TranscriptPanel
+                segments={segments}
+                speakerNames={speakerNames}
+                onRenameSpeaker={renameSpeaker}
+                onUpdateText={updateSegmentText}
+                onDeleteSegment={deleteSegment}
+              />
+            ) : (liveSummary || summary) ? (
+              <>
+                {upgradingFinalSummary && (
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2 shrink-0">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Generating final summary...
+                  </div>
+                )}
+                <SummaryPanel summary={(liveSummary || summary)!} />
+              </>
+            ) : null}
+          </>
         )}
-        {activeMainTab === 'transcript' ? (
-          <TranscriptPanel
-            segments={segments}
-            speakerNames={speakerNames}
-            onRenameSpeaker={renameSpeaker}
-            onUpdateText={updateSegmentText}
-            onDeleteSegment={deleteSegment}
-          />
-        ) : summary ? (
-          <SummaryPanel summary={summary} />
-        ) : null}
         {showPostRecordingBar && (
           <div className="shrink-0 flex items-center gap-2 pb-1">
             <Input
@@ -515,20 +628,22 @@ export function App() {
                 <ClipboardCopy className="size-3.5" />
                 {copied ? 'Copied!' : 'Copy'}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSummarize}
-                disabled={summaryStatus === 'loading' || !hasSummaryApiKey}
-                title={!hasSummaryApiKey ? 'Configure API key in Settings > AI Summary' : 'Generate AI summary'}
-              >
-                {summaryStatus === 'loading' ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="size-3.5" />
-                )}
-                {summaryStatus === 'loading' ? 'Summarizing…' : 'Summarize'}
-              </Button>
+              {!summaryFromLiveNotes && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSummarize}
+                  disabled={summaryStatus === 'loading' || !hasSummaryApiKey}
+                  title={!hasSummaryApiKey ? 'Configure API key in Settings > AI Summary' : 'Generate AI summary'}
+                >
+                  {summaryStatus === 'loading' ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-3.5" />
+                  )}
+                  {summaryStatus === 'loading' ? 'Summarizing…' : 'Summarize'}
+                </Button>
+              )}
               {summaryStatus === 'error' && (
                 <span className="text-xs text-destructive font-medium truncate max-w-[150px]" title={summaryError}>
                   {summaryError}
@@ -625,6 +740,21 @@ export function App() {
         shortcuts={shortcuts}
         shortcutStatus={shortcutStatus}
         onShortcutsChange={setShortcuts}
+        liveSummaryEnabled={liveSummarySettings.enabled}
+        onLiveSummaryEnabledChange={(enabled) =>
+          setLiveSummarySettings({ ...liveSummarySettings, enabled })
+        }
+        liveSummaryInterval={liveSummarySettings.intervalSeconds}
+        onLiveSummaryIntervalChange={(intervalSeconds) =>
+          setLiveSummarySettings({ ...liveSummarySettings, intervalSeconds })
+        }
+        liveSummaryFormatTemplate={liveSummarySettings.formatTemplate}
+        onLiveSummaryFormatTemplateChange={(formatTemplate) =>
+          setLiveSummarySettings({ ...liveSummarySettings, formatTemplate })
+        }
+        onResetLiveSummaryFormatTemplate={() =>
+          setLiveSummarySettings({ ...liveSummarySettings, formatTemplate: STORE_DEFAULTS.liveSummary.formatTemplate })
+        }
       />
 
       {dismissToast && (

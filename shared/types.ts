@@ -85,6 +85,16 @@ export interface FileTranscribeProgress {
   newSegments: TranscribeSegment[];
 }
 
+export interface LiveSummarizeRequest {
+  previousSummary: string;
+  corrections: string[];
+  recentSegments: { speaker: string; text: string; timestamp: number }[];
+  formatTemplate: string;
+  isFinal?: boolean;
+}
+
+export type LiveSummaryGenerationStatus = 'idle' | 'generating' | 'error';
+
 export type ShortcutAction = 'toggleRecording' | 'togglePause' | 'toggleMicMute';
 
 export interface ShortcutConfig {
@@ -116,4 +126,10 @@ export interface StoreSchema {
     minSegmentMs: number;
   };
   shortcuts: ShortcutConfig;
+  liveSummary: {
+    enabled: boolean;
+    intervalSeconds: number;
+    formatTemplate: string;
+    splitPosition: number;
+  };
 }

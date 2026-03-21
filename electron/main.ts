@@ -9,7 +9,7 @@ import * as diarizationService from './services/diarization-service.js';
 import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
 import * as summaryService from './services/summary-service.js';
-import type { StoreSchema, ShortcutConfig, ShortcutAction } from '../shared/types.js';
+import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
 
@@ -183,6 +183,10 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('summarize', async (_event, transcript: string, title: string) => {
     return summaryService.summarize(transcript, title);
+  });
+
+  ipcMain.handle('live-summarize', async (_event, request: LiveSummarizeRequest) => {
+    return summaryService.liveSummarize(request);
   });
 
   ipcMain.handle('transcribe-file', async (event, audioBuffer: ArrayBuffer, language: string, totalDurationSec: number) => {
