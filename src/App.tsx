@@ -241,7 +241,7 @@ export function App() {
     } finally {
       setTimeout(() => setSaveStatus('idle'), 3000);
     }
-  }, [exportSettings, segments, title, recordingStartTime, setFolder]);
+  }, [exportSettings, segments, title, recordingStartTime, setFolder, summary]);
 
   const handleSummarize = useCallback(async () => {
     if (segments.length === 0) return;

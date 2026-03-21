@@ -69,9 +69,15 @@ export async function summarize(transcript: string, title: string): Promise<Summ
     throw new Error('No API key configured. Set your API key in Settings > AI Summary.');
   }
 
+  const language = settingsStore.get('language') || 'auto';
+  const languageLabel = language === 'auto'
+    ? 'the same language as the transcript'
+    : language;
+
   const prompt = settings.promptTemplate
     .replace(/\{\{transcript\}\}/g, transcript)
-    .replace(/\{\{title\}\}/g, title || 'Untitled');
+    .replace(/\{\{title\}\}/g, title || 'Untitled')
+    .replace(/\{\{language\}\}/g, languageLabel);
 
   const response = await fetch(`${settings.apiBaseUrl}/chat/completions`, {
     method: 'POST',

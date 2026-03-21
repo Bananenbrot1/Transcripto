@@ -12,8 +12,9 @@ export function applyTemplate(
     return key in vars ? vars[key] : match;
   });
 
+  // Strip empty summary section (heading + separator) when no summary text
+  result = result.replace(/\n## Summary\n\s*\n---\n/m, '\n---\n');
   // Strip empty summary and surrounding separator/whitespace
-  // Handles patterns like empty summary followed by ---
   result = result.replace(/^\s*\n---\n/m, '');
   // Also clean up any leading blank lines left behind
   result = result.replace(/^\n+/, '');

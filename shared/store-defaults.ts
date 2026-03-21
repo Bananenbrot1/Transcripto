@@ -13,10 +13,13 @@ export const STORE_DEFAULTS: StoreSchema = {
 **Date:** {{date}}
 **Duration:** {{duration}}
 
+## Summary
+
 {{summary}}
 
 ---
 
+## Segments
 {{segments}}`,
   },
   summary: {
@@ -25,7 +28,8 @@ export const STORE_DEFAULTS: StoreSchema = {
     modelId: 'anthropic/claude-sonnet-4-20250514',
     promptTemplate: `Summarize the following meeting transcript titled "{{title}}".
 Highlight key decisions, action items, and topics discussed.
-Use markdown formatting.
+Use markdown formatting with headings starting at ### (h3) level.
+Write the summary in {{language}}.
 
 {{transcript}}`,
   },
