@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mic, MicOff, Settings, Pause, Play, Languages, ClipboardCopy, Sparkles, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Settings, Pause, Play, Languages, ClipboardCopy, Sparkles, Loader2, FileAudio } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
 import { useSummarySettings } from '@/hooks/use-summary-settings';
 import { useVADSettings } from '@/hooks/use-vad-settings';
 import { useStoreValue } from '@/hooks/use-store';
+import { useFileImport } from '@/hooks/use-file-import';
 import { applyTemplate, buildExportVariables, renderSegments, formatTranscriptForPrompt } from '@/lib/format-export';
 import { LANGUAGES } from '@/lib/languages';
 import { migrateFromLocalStorage } from '@/lib/migrate-local-storage';
@@ -87,7 +88,28 @@ export function App() {
     deleteSegment,
     dismissTranscript,
     restoreTranscript,
+    importFileSegments,
+    appendFileSegments,
   } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings });
+
+  const {
+    fileImportState,
+    fileProgress,
+    fileDurationSec,
+    errorMessage: fileErrorMessage,
+    importFile,
+    resetFileImport,
+  } = useFileImport({
+    language: selectedLanguage,
+    onImportStart: () => {
+      dismissTranscript();
+      setSummary(null);
+      setActiveMainTab('transcript');
+    },
+    onSegmentsBatch: appendFileSegments,
+    onTitleReady: (t) => setTitle(t),
+    onComplete: () => {},
+  });
 
   const [onboardingComplete, setOnboardingComplete] = useStoreValue('onboardingComplete');
   const [storedDarkMode, setStoredDarkMode] = useStoreValue('darkMode');
@@ -219,7 +241,11 @@ export function App() {
     }
     setSaveStatus('saving');
     try {
-      const vars = buildExportVariables(segments, title, recordingStartTime, summary?.text);
+      // For file imports, use file duration; for live recordings, use recording start time
+      const effectiveStartTime = fileDurationSec > 0
+        ? Date.now() - fileDurationSec * 1000
+        : recordingStartTime;
+      const vars = buildExportVariables(segments, title, effectiveStartTime, summary?.text);
       const filename = applyTemplate(exportSettings.filenameTemplate, vars);
       const content = applyTemplate(exportSettings.bodyTemplate, vars);
 
@@ -241,7 +267,7 @@ export function App() {
     } finally {
       setTimeout(() => setSaveStatus('idle'), 3000);
     }
-  }, [exportSettings, segments, title, recordingStartTime, setFolder, summary]);
+  }, [exportSettings, segments, title, recordingStartTime, setFolder, summary, fileDurationSec]);
 
   const handleSummarize = useCallback(async () => {
     if (segments.length === 0) return;
@@ -267,7 +293,8 @@ export function App() {
     setSaveStatus('idle');
     setSummary(null);
     setActiveMainTab('transcript');
-  }, [dismissTranscript, segments, speakerNames, title]);
+    resetFileImport();
+  }, [dismissTranscript, segments, speakerNames, title, resetFileImport]);
 
   const handleUndoDismiss = useCallback(() => {
     if (dismissToast) {
@@ -339,7 +366,8 @@ export function App() {
   const modelDisplayName = currentModel
     ? currentModel.label.split(' — ')[0].split(' (')[0]
     : 'Unknown';
-  const showPostRecordingBar = recordingState === 'idle' && segments.length > 0;
+  const isFileBusy = fileImportState === 'decoding' || fileImportState === 'transcribing';
+  const showPostRecordingBar = recordingState === 'idle' && segments.length > 0 && !isFileBusy;
   const showPermissionBannerInMain = isCapturing && (systemAudioStatus === 'no-permission' || systemAudioStatus === 'failed');
 
   return (
@@ -363,6 +391,25 @@ export function App() {
             {recordingState === 'recording' && (
               <span className={`text-sm font-mono font-medium tabular-nums ${isPaused ? 'text-muted-foreground' : 'text-destructive'}`}>
                 {isPaused ? 'Paused' : formatElapsed(elapsedRecording)}
+              </span>
+            )}
+            {fileImportState === 'decoding' && (
+              <span className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Loader2 className="size-3.5 animate-spin" />
+                Decoding audio...
+              </span>
+            )}
+            {fileImportState === 'transcribing' && (
+              <span className="text-sm font-mono font-medium tabular-nums text-primary flex items-center gap-1.5">
+                <Loader2 className="size-3.5 animate-spin" />
+                Transcribing... {fileProgress && fileDurationSec > 0
+                  ? `${Math.round((fileProgress.durationProcessedSec / fileDurationSec) * 100)}%`
+                  : ''}
+              </span>
+            )}
+            {fileImportState === 'error' && (
+              <span className="text-sm text-destructive font-medium truncate max-w-[250px]" title={fileErrorMessage}>
+                Import failed: {fileErrorMessage}
               </span>
             )}
             {isCapturing && (
@@ -391,6 +438,15 @@ export function App() {
               onStart={handleStartRecording}
               onStop={stopRecording}
             />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={importFile}
+              disabled={recordingState !== 'idle' || fileImportState === 'decoding' || fileImportState === 'transcribing'}
+              title="Import audio file"
+            >
+              <FileAudio className="size-4" />
+            </Button>
             <Button
               variant="outline"
               size="icon"

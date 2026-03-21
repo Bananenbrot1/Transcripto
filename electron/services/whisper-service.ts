@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import * as whisperNode from '@fugood/whisper.node';
 import type { WhisperContext, NewSegmentsEvent } from '@fugood/whisper.node';
-import type { TranscribeResult } from '../../shared/types.js';
+import type { TranscribeResult, FileTranscribeProgress, TranscribeSegment } from '../../shared/types.js';
 
 const TURN_MARKER = ' [SPEAKER_TURN]';
 const TRANSCRIBE_TIMEOUT_MS = 20_000;
@@ -177,6 +177,90 @@ export async function transcribe(
       if (source === 'mic') micQueueDepth--;
       else sysQueueDepth--;
     });
+}
+
+export function isMicContextBusy(): boolean {
+  return micQueueDepth > 0;
+}
+
+const FILE_TRANSCRIBE_TIMEOUT_MS = 600_000; // 10 minutes
+
+export async function transcribeFile(
+  audioBuffer: ArrayBuffer,
+  language: string,
+  totalDurationSec: number,
+  onProgress: (progress: FileTranscribeProgress) => void,
+): Promise<TranscribeResult> {
+  if (!micContext) {
+    throw new Error('Whisper not initialized');
+  }
+  if (micQueueDepth > 0) {
+    throw new Error('Mic context is busy — cannot transcribe file while recording');
+  }
+
+  micQueueDepth++;
+  try {
+    const float32 = new Float32Array(audioBuffer);
+    const int16 = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      const s = Math.max(-1, Math.min(1, float32[i]));
+      int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    log(`[whisper] transcribeFile: ${int16.length} int16 samples, duration=${totalDurationSec}s`);
+
+    const collectedSegments: Array<{ text: string; t0: number; t1: number }> = [];
+
+    const { promise: nativePromise } = micContext.transcribeData(int16.buffer, {
+      language: language || 'auto',
+      maxLen: 0,
+      temperature: 0.0,
+      tdrzEnable: false,
+      onNewSegments: (event: NewSegmentsEvent) => {
+        const batch: TranscribeSegment[] = [];
+        for (const seg of event.segments) {
+          const entry = { text: (seg.text ?? '').trim(), t0: seg.t0 ?? 0, t1: seg.t1 ?? 0 };
+          collectedSegments.push(entry);
+          batch.push({ ...entry, speakerTurn: false });
+        }
+        onProgress({
+          segmentsCompleted: collectedSegments.length,
+          durationProcessedSec: collectedSegments[collectedSegments.length - 1]?.t1 ?? 0,
+          totalDurationSec,
+          newSegments: batch,
+        });
+      },
+    });
+
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`[whisper] file transcription timed out after ${FILE_TRANSCRIBE_TIMEOUT_MS}ms`)), FILE_TRANSCRIBE_TIMEOUT_MS),
+    );
+
+    try {
+      await Promise.race([nativePromise, timeout]);
+    } catch (err) {
+      if (collectedSegments.length > 0) {
+        log(`[whisper] file transcribe timeout but ${collectedSegments.length} segment(s) collected — using partial result`);
+      } else {
+        throw err;
+      }
+    }
+
+    const processed = collectedSegments.map((seg) => ({
+      text: seg.text.trim(),
+      t0: seg.t0,
+      t1: seg.t1,
+      speakerTurn: false,
+    }));
+
+    const result: TranscribeResult = {
+      text: processed.map((s) => s.text).join(' ').trim(),
+      segments: processed,
+    };
+    log(`[whisper] transcribeFile done: segments=${result.segments.length}`);
+    return result;
+  } finally {
+    micQueueDepth--;
+  }
 }
 
 export async function release(): Promise<void> {

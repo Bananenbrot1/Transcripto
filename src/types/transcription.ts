@@ -8,4 +8,5 @@ export type {
   ModelStatus,
   TranscribeResult,
   DownloadProgress,
+  FileTranscribeProgress,
 } from '../../shared/types';
