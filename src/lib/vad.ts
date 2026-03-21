@@ -1,5 +1,8 @@
 import { calculateRMS, concatFloat32Arrays } from './audio-utils';
 
+/** Minimum average RMS across the full segment to emit — rejects noise spikes followed by silence */
+const MIN_SEGMENT_RMS = 0.008;
+
 export interface VADCallbacks {
   onSpeechEnd?: (audio: Float32Array, speechStartMs: number) => void;
   onRMS?: (rms: number) => void;
@@ -35,10 +38,10 @@ export class SimpleVAD {
   private onSpeechState: ((isSpeaking: boolean) => void) | null = null;
 
   constructor(options: VADOptions = {}, callbacks: VADCallbacks = {}) {
-    this.silenceThreshold = options.silenceThreshold ?? 0.01;
+    this.silenceThreshold = options.silenceThreshold ?? 0.015;
     this.silenceDurationMs = options.silenceDurationMs ?? 800;
     this.maxSegmentMs = options.maxSegmentMs ?? 30000;
-    this.minSegmentMs = options.minSegmentMs ?? 500;
+    this.minSegmentMs = options.minSegmentMs ?? 800;
 
     if (callbacks.onSpeechEnd) this.onSpeechEnd = callbacks.onSpeechEnd;
     if (callbacks.onRMS) this.onRMS = callbacks.onRMS;
@@ -123,7 +126,10 @@ export class SimpleVAD {
       const durationMs = (this.totalSamples / 16000) * 1000;
       if (durationMs >= this.minSegmentMs && this.onSpeechEnd) {
         const audio = concatFloat32Arrays(this.chunks);
-        this.onSpeechEnd(audio, this.segmentStartTime ?? Date.now());
+        const segmentRMS = calculateRMS(audio);
+        if (segmentRMS >= MIN_SEGMENT_RMS) {
+          this.onSpeechEnd(audio, this.segmentStartTime ?? Date.now());
+        }
       }
     }
     this.reset();
