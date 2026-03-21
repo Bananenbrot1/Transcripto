@@ -68,6 +68,14 @@ interface SettingsDialogProps {
   shortcuts: ShortcutConfig;
   shortcutStatus: Record<string, boolean>;
   onShortcutsChange: (shortcuts: ShortcutConfig) => void;
+  // Live Summary
+  liveSummaryEnabled: boolean;
+  onLiveSummaryEnabledChange: (enabled: boolean) => void;
+  liveSummaryInterval: number;
+  onLiveSummaryIntervalChange: (seconds: number) => void;
+  liveSummaryFormatTemplate: string;
+  onLiveSummaryFormatTemplateChange: (template: string) => void;
+  onResetLiveSummaryFormatTemplate: () => void;
 }
 
 function toAppearanceMode(darkMode: boolean | null): AppearanceMode {
@@ -226,6 +234,13 @@ function SummarySettingsTab({
   onApiKeyChange,
   onModelIdChange,
   onPromptTemplateChange,
+  liveSummaryEnabled,
+  onLiveSummaryEnabledChange,
+  liveSummaryInterval,
+  onLiveSummaryIntervalChange,
+  liveSummaryFormatTemplate,
+  onLiveSummaryFormatTemplateChange,
+  onResetLiveSummaryFormatTemplate,
 }: {
   settings: SummarySettings;
   decryptedKey: string;
@@ -233,6 +248,13 @@ function SummarySettingsTab({
   onApiKeyChange: (key: string) => Promise<void>;
   onModelIdChange: (modelId: string) => void;
   onPromptTemplateChange: (template: string) => void;
+  liveSummaryEnabled: boolean;
+  onLiveSummaryEnabledChange: (enabled: boolean) => void;
+  liveSummaryInterval: number;
+  onLiveSummaryIntervalChange: (seconds: number) => void;
+  liveSummaryFormatTemplate: string;
+  onLiveSummaryFormatTemplateChange: (template: string) => void;
+  onResetLiveSummaryFormatTemplate: () => void;
 }) {
   const [showKey, setShowKey] = useState(false);
   const [keyInput, setKeyInput] = useState('');
@@ -364,6 +386,73 @@ function SummarySettingsTab({
           )}
         </div>
       </section>
+
+      <section className="space-y-3 border-t pt-4">
+        <h3 className="text-sm font-medium">Live Meeting Notes</h3>
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="live-summary-enabled">Enable live notes during recording</Label>
+            <p className="text-xs text-muted-foreground">
+              {!decryptedKey
+                ? 'Requires an API key to be configured above'
+                : 'Automatically generate and update meeting notes while recording'}
+            </p>
+          </div>
+          <Switch
+            id="live-summary-enabled"
+            checked={liveSummaryEnabled}
+            onCheckedChange={onLiveSummaryEnabledChange}
+            disabled={!decryptedKey}
+          />
+        </div>
+
+        {liveSummaryEnabled && (
+          <>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <Label htmlFor="live-summary-interval" className="text-xs">Update interval</Label>
+                <span className="text-xs text-muted-foreground">{liveSummaryInterval}s</span>
+              </div>
+              <input
+                id="live-summary-interval"
+                type="range"
+                min="30" max="300" step="10"
+                value={liveSummaryInterval}
+                onChange={(e) => onLiveSummaryIntervalChange(parseInt(e.target.value))}
+                className="w-full h-1.5 accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">
+                Minimum time between updates (also triggers every 5 new segments)
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="live-summary-format" className="text-xs">Format template</Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onResetLiveSummaryFormatTemplate}
+                  className="h-6 px-2 text-xs gap-1"
+                >
+                  <RotateCcw className="size-3" />
+                  Reset
+                </Button>
+              </div>
+              <Textarea
+                id="live-summary-format"
+                value={liveSummaryFormatTemplate}
+                onChange={(e) => onLiveSummaryFormatTemplateChange(e.target.value)}
+                rows={5}
+                className="font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                Defines the output sections and style for live notes
+              </p>
+            </div>
+          </>
+        )}
+      </section>
     </>
   );
 }
@@ -402,6 +491,13 @@ export function SettingsDialog({
   shortcuts,
   shortcutStatus,
   onShortcutsChange,
+  liveSummaryEnabled,
+  onLiveSummaryEnabledChange,
+  liveSummaryInterval,
+  onLiveSummaryIntervalChange,
+  liveSummaryFormatTemplate,
+  onLiveSummaryFormatTemplateChange,
+  onResetLiveSummaryFormatTemplate,
 }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<Tab>('General');
 
@@ -538,6 +634,13 @@ export function SettingsDialog({
               onApiKeyChange={onSummaryApiKeyChange}
               onModelIdChange={onSummaryModelIdChange}
               onPromptTemplateChange={onSummaryPromptTemplateChange}
+              liveSummaryEnabled={liveSummaryEnabled}
+              onLiveSummaryEnabledChange={onLiveSummaryEnabledChange}
+              liveSummaryInterval={liveSummaryInterval}
+              onLiveSummaryIntervalChange={onLiveSummaryIntervalChange}
+              liveSummaryFormatTemplate={liveSummaryFormatTemplate}
+              onLiveSummaryFormatTemplateChange={onLiveSummaryFormatTemplateChange}
+              onResetLiveSummaryFormatTemplate={onResetLiveSummaryFormatTemplate}
             />
           )}
 

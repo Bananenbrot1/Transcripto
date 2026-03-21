@@ -17,6 +17,7 @@ import type {
   ShortcutConfig,
   SummaryResult,
   FileTranscribeProgress,
+  LiveSummarizeRequest,
 } from '../shared/types';
 
 export type {
@@ -31,6 +32,7 @@ export type {
   ShortcutConfig,
   SummaryResult,
   FileTranscribeProgress,
+  LiveSummarizeRequest,
 };
 
 /** All methods exposed on window.electronAPI via contextBridge. */
@@ -68,6 +70,7 @@ export interface ElectronAPI {
   decryptString: (encrypted: string) => Promise<string>;
   testSummaryConnection: () => Promise<{ success: boolean; error?: string }>;
   summarize: (transcript: string, title: string) => Promise<SummaryResult>;
+  liveSummarize: (request: LiveSummarizeRequest) => Promise<SummaryResult>;
   transcribeFile: (audioBuffer: ArrayBuffer, language: string, totalDurationSec: number) => Promise<TranscribeResult>;
   onTranscribeFileProgress: (callback: (progress: FileTranscribeProgress) => void) => () => void;
   selectAudioFile: () => Promise<{ fileName: string; data: ArrayBuffer } | null>;

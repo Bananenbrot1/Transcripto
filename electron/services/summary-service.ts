@@ -1,6 +1,6 @@
 import { safeStorage } from 'electron';
 import * as settingsStore from './settings-store.js';
-import type { SummaryResult } from '../../shared/types.js';
+import type { SummaryResult, LiveSummarizeRequest } from '../../shared/types.js';
 
 export function encryptString(plaintext: string): string {
   if (!safeStorage.isEncryptionAvailable()) {
@@ -78,6 +78,84 @@ export async function summarize(transcript: string, title: string): Promise<Summ
     .replace(/\{\{transcript\}\}/g, transcript)
     .replace(/\{\{title\}\}/g, title || 'Untitled')
     .replace(/\{\{language\}\}/g, languageLabel);
+
+  const response = await fetch(`${settings.apiBaseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: settings.modelId,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`API error ${response.status}: ${body}`);
+  }
+
+  const data = await response.json();
+  const choice = data.choices?.[0];
+  const text = choice?.message?.content ?? '';
+  const usage = data.usage ?? {};
+
+  return {
+    text,
+    usage: {
+      promptTokens: usage.prompt_tokens ?? 0,
+      completionTokens: usage.completion_tokens ?? 0,
+      totalTokens: usage.total_tokens ?? 0,
+    },
+  };
+}
+
+export async function liveSummarize(request: LiveSummarizeRequest): Promise<SummaryResult> {
+  const settings = settingsStore.get('summary');
+  const apiKey = getApiKey();
+
+  if (!apiKey) {
+    throw new Error('No API key configured. Set your API key in Settings > AI Summary.');
+  }
+
+  const language = settingsStore.get('language') || 'auto';
+  const languageLabel = language === 'auto'
+    ? 'the same language as the transcript'
+    : language;
+
+  const transcriptLines = request.recentSegments
+    .map((s) => `[${s.speaker}]: ${s.text}`)
+    .join('\n');
+
+  const parts: string[] = [
+    `You are a live meeting notes assistant. Your job is to maintain concise, evolving notes that build up gradually over the course of a meeting.`,
+    ``,
+    `IMPORTANT RULES:`,
+    `- Be SELECTIVE. Only note information that would matter to someone who missed the meeting. Ignore small talk, filler, repetition, and trivial details.`,
+    `- Be INCREMENTAL. Do not restate or rephrase points already in the existing notes. Only add genuinely new, noteworthy information.`,
+    `- Be BRIEF. A few strong bullet points are better than many weak ones. When in doubt, leave it out.`,
+    `- PROGRESSIVE SECTIONS. Only include a section if there is meaningful content for it. Omit empty sections entirely. Early in a meeting, fewer sections is expected and preferred — do not force structure before there is substance.`,
+    `- Do NOT include a Decisions or Action Items section unless actual decisions or action items have been explicitly stated in the transcript.`,
+    ``,
+    `Write in ${languageLabel}.`,
+  ];
+
+  if (request.previousSummary) {
+    parts.push(`\nCurrent meeting notes:\n${request.previousSummary}`);
+  } else {
+    parts.push(`\nNo meeting notes exist yet. Create the initial notes. Start sparse — just the key topic(s) and a few important points.`);
+  }
+
+  if (request.corrections.length > 0) {
+    parts.push(`\nUser corrections (always respect these):\n${request.corrections.map((c) => `- ${c}`).join('\n')}`);
+  }
+
+  parts.push(`\nRecent transcript:\n${transcriptLines}`);
+  parts.push(`\n${request.formatTemplate}`);
+  parts.push(`\nReturn ONLY the updated meeting notes, no explanations or preamble.`);
+
+  const prompt = parts.join('\n');
 
   const response = await fetch(`${settings.apiBaseUrl}/chat/completions`, {
     method: 'POST',
