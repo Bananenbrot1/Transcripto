@@ -47,7 +47,6 @@ describe('migrateFromLocalStorage', () => {
 
   it('migrates grouped export settings', async () => {
     localStorage.setItem('transcripto-export-folder', '/tmp/exports');
-    localStorage.setItem('transcripto-export-auto-save', 'true');
 
     await migrateFromLocalStorage();
 
@@ -56,7 +55,6 @@ describe('migrateFromLocalStorage', () => {
     );
     expect(exportCall).toBeDefined();
     expect(exportCall![1].folder).toBe('/tmp/exports');
-    expect(exportCall![1].autoSave).toBe(true);
   });
 
   it('migrates grouped VAD settings', async () => {

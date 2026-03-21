@@ -15,6 +15,7 @@ import type {
   StoreSchema,
   ShortcutAction,
   ShortcutConfig,
+  SummaryResult,
 } from '../shared/types';
 
 export type {
@@ -27,6 +28,7 @@ export type {
   StoreSchema,
   ShortcutAction,
   ShortcutConfig,
+  SummaryResult,
 };
 
 /** All methods exposed on window.electronAPI via contextBridge. */
@@ -60,4 +62,8 @@ export interface ElectronAPI {
   storeGetAll: () => Promise<StoreSchema>;
   registerShortcuts: (shortcuts: ShortcutConfig) => Promise<Record<string, boolean>>;
   onShortcutAction: (callback: (action: ShortcutAction) => void) => () => void;
+  encryptString: (plaintext: string) => Promise<string>;
+  decryptString: (encrypted: string) => Promise<string>;
+  testSummaryConnection: () => Promise<{ success: boolean; error?: string }>;
+  summarize: (transcript: string, title: string) => Promise<SummaryResult>;
 }

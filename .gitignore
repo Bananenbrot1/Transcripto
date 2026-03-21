@@ -6,3 +6,7 @@ out/
 models/
 .DS_Store
 *.dmg
+.ralph*/
+plans/
+.agents/
+.claude/

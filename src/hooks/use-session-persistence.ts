@@ -1,15 +1,18 @@
 import { useEffect, useRef } from 'react';
 import type { TranscriptSegment } from '@/types/transcription';
+import type { SummaryResult } from '../../shared/types';
 
 const KEY_SEGMENTS = 'transcripto-session-segments';
 const KEY_SPEAKER_NAMES = 'transcripto-session-speaker-names';
 const KEY_RECORDING_START = 'transcripto-session-recording-start';
+const KEY_SUMMARY = 'transcripto-session-summary';
 const MAX_SEGMENTS = 500; // guard against storing unreasonably large sessions
 
 export interface PersistedSession {
   segments: TranscriptSegment[];
   speakerNames: Record<string, string>;
   recordingStartTime: number;
+  summary: SummaryResult | null;
 }
 
 export function loadSession(): PersistedSession | null {
@@ -25,7 +28,12 @@ export function loadSession(): PersistedSession | null {
       10,
     );
     if (!Array.isArray(segments) || segments.length === 0) return null;
-    return { segments, speakerNames, recordingStartTime };
+    let summary: SummaryResult | null = null;
+    try {
+      const rawSummary = localStorage.getItem(KEY_SUMMARY);
+      if (rawSummary) summary = JSON.parse(rawSummary);
+    } catch { /* ignore */ }
+    return { segments, speakerNames, recordingStartTime, summary };
   } catch {
     return null;
   }
@@ -35,6 +43,15 @@ export function clearSession(): void {
   localStorage.removeItem(KEY_SEGMENTS);
   localStorage.removeItem(KEY_SPEAKER_NAMES);
   localStorage.removeItem(KEY_RECORDING_START);
+  localStorage.removeItem(KEY_SUMMARY);
+}
+
+export function saveSummary(summary: SummaryResult | null): void {
+  if (summary) {
+    localStorage.setItem(KEY_SUMMARY, JSON.stringify(summary));
+  } else {
+    localStorage.removeItem(KEY_SUMMARY);
+  }
 }
 
 /**

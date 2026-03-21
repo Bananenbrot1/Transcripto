@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mic, MicOff, Settings, Pause, Play, Languages, ClipboardCopy } from 'lucide-react';
+import { Mic, MicOff, Settings, Pause, Play, Languages, ClipboardCopy, Sparkles, Loader2 } from 'lucide-react';
 import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
+import { useSummarySettings } from '@/hooks/use-summary-settings';
 import { useVADSettings } from '@/hooks/use-vad-settings';
 import { useStoreValue } from '@/hooks/use-store';
-import { applyTemplate, buildExportVariables, renderSegments } from '@/lib/format-export';
+import { applyTemplate, buildExportVariables, renderSegments, formatTranscriptForPrompt } from '@/lib/format-export';
 import { LANGUAGES } from '@/lib/languages';
 import { migrateFromLocalStorage } from '@/lib/migrate-local-storage';
+import { loadSession, saveSummary } from '@/hooks/use-session-persistence';
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
 import { SettingsDialog } from '@/components/settings-dialog';
 import { RecordButton } from '@/components/record-button';
@@ -17,6 +19,8 @@ import { Toast } from '@/components/ui/toast';
 import { AudioSourceIndicator, PermissionBanner } from '@/components/audio-source-indicator';
 import { TranscriptPanel } from '@/components/transcript-panel';
 import { DiarizationControls } from '@/components/diarization-controls';
+import { SummaryPanel } from '@/components/summary-panel';
+import type { SummaryResult } from '../shared/types';
 
 export function App() {
   const {
@@ -38,8 +42,17 @@ export function App() {
     setFolder,
     setFilenameTemplate,
     setBodyTemplate,
-    setAutoSave,
   } = useExportSettings();
+
+  const {
+    settings: summarySettings,
+    decryptedKey: summaryDecryptedKey,
+    hasApiKey: hasSummaryApiKey,
+    setApiBaseUrl: setSummaryApiBaseUrl,
+    setApiKey: setSummaryApiKey,
+    setModelId: setSummaryModelId,
+    setPromptTemplate: setSummaryPromptTemplate,
+  } = useSummarySettings();
 
   const {
     settings: vadSettings,
@@ -100,7 +113,18 @@ export function App() {
     });
   }, [segments]);
   const [showDebug, setShowDebug] = useState(false);
-  const prevRecordingState = useRef(recordingState);
+  const [activeMainTab, setActiveMainTab] = useState<'transcript' | 'summary'>(() => {
+    const session = loadSession();
+    return session?.summary ? 'summary' : 'transcript';
+  });
+  const [summary, setSummary] = useState<SummaryResult | null>(() => loadSession()?.summary ?? null);
+  const [summaryStatus, setSummaryStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [summaryError, setSummaryError] = useState('');
+  // Persist summary to localStorage whenever it changes
+  useEffect(() => {
+    saveSummary(summary);
+  }, [summary]);
+
   const autoInitAttempted = useRef(false);
 
   // Dark mode — null means follow system preference
@@ -131,12 +155,18 @@ export function App() {
     window.electronAPI.registerShortcuts(shortcuts).then(setShortcutStatus);
   }, [shortcuts]);
 
+  const handleStartRecording = useCallback(() => {
+    setSummary(null);
+    setActiveMainTab('transcript');
+    startRecording();
+  }, [startRecording]);
+
   // Listen for global shortcut actions from the main process
   useEffect(() => {
     return window.electronAPI.onShortcutAction((action) => {
       switch (action) {
         case 'toggleRecording':
-          if (recordingState === 'idle') startRecording();
+          if (recordingState === 'idle') handleStartRecording();
           else if (recordingState === 'recording') stopRecording();
           break;
         case 'togglePause':
@@ -147,7 +177,7 @@ export function App() {
           break;
       }
     });
-  }, [recordingState, isCapturing, startRecording, stopRecording, togglePause, toggleMicMute]);
+  }, [recordingState, isCapturing, handleStartRecording, stopRecording, togglePause, toggleMicMute]);
 
   // Recording timer (pauses correctly by tracking accumulated time)
   const [elapsedRecording, setElapsedRecording] = useState(0);
@@ -189,7 +219,7 @@ export function App() {
     }
     setSaveStatus('saving');
     try {
-      const vars = buildExportVariables(segments, title, recordingStartTime);
+      const vars = buildExportVariables(segments, title, recordingStartTime, summary?.text);
       const filename = applyTemplate(exportSettings.filenameTemplate, vars);
       const content = applyTemplate(exportSettings.bodyTemplate, vars);
 
@@ -211,27 +241,32 @@ export function App() {
     } finally {
       setTimeout(() => setSaveStatus('idle'), 3000);
     }
-  }, [exportSettings, segments, title, recordingStartTime, setFolder]);
+  }, [exportSettings, segments, title, recordingStartTime, setFolder, summary]);
 
-  // Auto-save when recording stops
-  useEffect(() => {
-    if (
-      prevRecordingState.current === 'stopping' &&
-      recordingState === 'idle' &&
-      exportSettings.autoSave &&
-      exportSettings.folder &&
-      segments.length > 0
-    ) {
-      handleSave();
+  const handleSummarize = useCallback(async () => {
+    if (segments.length === 0) return;
+    setSummaryStatus('loading');
+    setSummaryError('');
+    try {
+      const transcript = formatTranscriptForPrompt(segments);
+      const result = await window.electronAPI.summarize(transcript, title || 'Untitled');
+      setSummary(result);
+      setSummaryStatus('idle');
+      setActiveMainTab('summary');
+    } catch (err) {
+      setSummaryStatus('error');
+      setSummaryError((err as Error).message);
+      setTimeout(() => setSummaryStatus('idle'), 5000);
     }
-    prevRecordingState.current = recordingState;
-  }, [recordingState, exportSettings.autoSave, exportSettings.folder, segments, handleSave]);
+  }, [segments, title]);
 
   const handleDismiss = useCallback(() => {
     setDismissToast({ segments: [...segments], speakerNames: { ...speakerNames }, title });
     dismissTranscript();
     setTitle('');
     setSaveStatus('idle');
+    setSummary(null);
+    setActiveMainTab('transcript');
   }, [dismissTranscript, segments, speakerNames, title]);
 
   const handleUndoDismiss = useCallback(() => {
@@ -353,7 +388,7 @@ export function App() {
             )}
             <RecordButton
               recordingState={recordingState}
-              onStart={startRecording}
+              onStart={handleStartRecording}
               onStop={stopRecording}
             />
             <Button
@@ -370,13 +405,41 @@ export function App() {
 
       <main className="flex-1 overflow-hidden flex flex-col px-6 py-4 gap-3">
         {showPermissionBannerInMain && <PermissionBanner />}
-        <TranscriptPanel
-          segments={segments}
-          speakerNames={speakerNames}
-          onRenameSpeaker={renameSpeaker}
-          onUpdateText={updateSegmentText}
-          onDeleteSegment={deleteSegment}
-        />
+        {summary && showPostRecordingBar && (
+          <div className="flex border-b -mx-6 px-6 shrink-0">
+            <button
+              onClick={() => setActiveMainTab('transcript')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                activeMainTab === 'transcript'
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Transcript
+            </button>
+            <button
+              onClick={() => setActiveMainTab('summary')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                activeMainTab === 'summary'
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Summary
+            </button>
+          </div>
+        )}
+        {activeMainTab === 'transcript' ? (
+          <TranscriptPanel
+            segments={segments}
+            speakerNames={speakerNames}
+            onRenameSpeaker={renameSpeaker}
+            onUpdateText={updateSegmentText}
+            onDeleteSegment={deleteSegment}
+          />
+        ) : summary ? (
+          <SummaryPanel summary={summary} />
+        ) : null}
         {showPostRecordingBar && (
           <div className="shrink-0 flex items-center gap-2 pb-1">
             <Input
@@ -396,6 +459,25 @@ export function App() {
                 <ClipboardCopy className="size-3.5" />
                 {copied ? 'Copied!' : 'Copy'}
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSummarize}
+                disabled={summaryStatus === 'loading' || !hasSummaryApiKey}
+                title={!hasSummaryApiKey ? 'Configure API key in Settings > AI Summary' : 'Generate AI summary'}
+              >
+                {summaryStatus === 'loading' ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="size-3.5" />
+                )}
+                {summaryStatus === 'loading' ? 'Summarizing…' : 'Summarize'}
+              </Button>
+              {summaryStatus === 'error' && (
+                <span className="text-xs text-destructive font-medium truncate max-w-[150px]" title={summaryError}>
+                  {summaryError}
+                </span>
+              )}
               {saveStatus === 'saved' && (
                 <span className="text-xs text-green-600 font-medium">Saved!</span>
               )}
@@ -462,7 +544,12 @@ export function App() {
         onFolderChange={setFolder}
         onFilenameTemplateChange={setFilenameTemplate}
         onBodyTemplateChange={setBodyTemplate}
-        onAutoSaveChange={setAutoSave}
+        summarySettings={summarySettings}
+        summaryDecryptedKey={summaryDecryptedKey}
+        onSummaryApiBaseUrlChange={setSummaryApiBaseUrl}
+        onSummaryApiKeyChange={setSummaryApiKey}
+        onSummaryModelIdChange={setSummaryModelId}
+        onSummaryPromptTemplateChange={setSummaryPromptTemplate}
         vadSettings={vadSettings}
         onSilenceThresholdChange={setSilenceThreshold}
         onSilenceDurationMsChange={setSilenceDurationMs}
