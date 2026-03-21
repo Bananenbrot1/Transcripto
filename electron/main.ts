@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog, globalShortcut } from 'electron';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import * as modelManager from './services/model-manager.js';
 import * as whisperService from './services/whisper-service.js';
 import * as markdownExport from './services/markdown-export.js';
@@ -182,6 +183,36 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('summarize', async (_event, transcript: string, title: string) => {
     return summaryService.summarize(transcript, title);
+  });
+
+  ipcMain.handle('transcribe-file', async (event, audioBuffer: ArrayBuffer, language: string, totalDurationSec: number) => {
+    console.log(`[main] IPC transcribe-file: lang=${language}, duration=${totalDurationSec}s, byteLength=${audioBuffer?.byteLength}`);
+    try {
+      const result = await whisperService.transcribeFile(audioBuffer, language, totalDurationSec, (progress) => {
+        event.sender.send('transcribe-file-progress', progress);
+      });
+      console.log(`[main] IPC transcribe-file done: segments=${result.segments.length}`);
+      return result;
+    } catch (err) {
+      console.error('[main] IPC transcribe-file error:', err);
+      throw err;
+    }
+  });
+
+  ipcMain.handle('select-audio-file', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        { name: 'Audio Files', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'] },
+      ],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    const filePath = result.filePaths[0];
+    const fileName = path.basename(filePath);
+    const fileBuffer = fs.readFileSync(filePath);
+    return { fileName, data: fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength) };
   });
 
   ipcMain.handle('diarize', async (event, numSpeakers: number = -1) => {

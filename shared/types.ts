@@ -4,7 +4,7 @@
  * tsconfig.electron.json so that types stay in sync across the IPC boundary.
  */
 
-export type AudioSource = 'mic' | 'system';
+export type AudioSource = 'mic' | 'system' | 'file';
 
 export type RecordingState = 'idle' | 'recording' | 'stopping';
 
@@ -76,6 +76,13 @@ export interface SummaryResult {
     completionTokens: number;
     totalTokens: number;
   };
+}
+
+export interface FileTranscribeProgress {
+  segmentsCompleted: number;
+  durationProcessedSec: number;
+  totalDurationSec: number;
+  newSegments: TranscribeSegment[];
 }
 
 export type ShortcutAction = 'toggleRecording' | 'togglePause' | 'toggleMicMute';

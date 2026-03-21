@@ -32,7 +32,7 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
   languageRef.current = language;
 
   const onSpeechEnd = useCallback(
-    async (source: AudioSource, audioBuffer: ArrayBuffer, speechStartMs: number) => {
+    async (source: 'mic' | 'system', audioBuffer: ArrayBuffer, speechStartMs: number) => {
       const timestamp = Date.now();
       pendingRef.current++;
       console.log(`[transcription] onSpeechEnd: source=${source}, byteLength=${audioBuffer.byteLength}, pending=${pendingRef.current}`);
@@ -198,6 +198,11 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     setSpeakerNames(restoredSpeakerNames);
   }, []);
 
+  const appendFileSegments = useCallback((newSegments: TranscriptSegment[]) => {
+    setSegments((prev) => [...prev, ...newSegments]);
+    segmentCounterRef.current += newSegments.length;
+  }, []);
+
   useSessionPersistence(segments, speakerNames, recordingStartTime, recordingState !== 'idle');
 
   return {
@@ -224,5 +229,6 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     deleteSegment,
     dismissTranscript,
     restoreTranscript,
+    appendFileSegments,
   };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Mic, Monitor, Copy, Trash2 } from 'lucide-react';
+import { Mic, Monitor, FileAudio, Copy, Trash2 } from 'lucide-react';
 import type { TranscriptSegment } from '@/types/transcription';
 
 interface TranscriptPanelProps {
@@ -33,9 +33,10 @@ function SpeakerLabel({
 
   const speakerId = segment.speakerId;
   const displayName = speakerId ? (speakerNames[speakerId] ?? segment.speaker) : segment.speaker;
+  const isFile = segment.source === 'file';
   const isMic = segment.source === 'mic';
-  const colorClass = isMic ? 'text-blue-600' : 'text-green-600';
-  const Icon = isMic ? Mic : Monitor;
+  const colorClass = isFile ? 'text-purple-600' : isMic ? 'text-blue-600' : 'text-green-600';
+  const Icon = isFile ? FileAudio : isMic ? Mic : Monitor;
 
   const handleClick = () => {
     if (!speakerId) return;

@@ -14,7 +14,7 @@ interface AudioPipeline {
 }
 
 interface AudioCaptureCallbacks {
-  onSpeechEnd: (source: AudioSource, audioBuffer: ArrayBuffer, speechStartMs: number) => void;
+  onSpeechEnd: (source: 'mic' | 'system', audioBuffer: ArrayBuffer, speechStartMs: number) => void;
   onRMS: (source: AudioSource, rms: number) => void;
   vadOptions?: VADOptions;
 }
@@ -113,7 +113,7 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
   }, []);
 
   const createPipeline = useCallback(
-    async (stream: MediaStream, source: AudioSource, isMutedFn?: () => boolean): Promise<AudioPipeline> => {
+    async (stream: MediaStream, source: 'mic' | 'system', isMutedFn?: () => boolean): Promise<AudioPipeline> => {
       const audioContext = new AudioContext({ sampleRate: 48000 });
       await audioContext.audioWorklet.addModule('./pcm-worklet-processor.js');
 
