@@ -34,10 +34,10 @@ Write the summary in {{language}}.
 {{transcript}}`,
   },
   vad: {
-    silenceThreshold: 0.01,
+    silenceThreshold: 0.015,
     silenceDurationMs: 800,
     maxSegmentMs: 30000,
-    minSegmentMs: 500,
+    minSegmentMs: 800,
   },
   shortcuts: {
     toggleRecording: null,
