@@ -194,6 +194,7 @@ export function App() {
         corrections,
         recentSegments: allSegments,
         formatTemplate: liveSummarySettings.formatTemplate,
+        isFinal: true,
       }).then((result) => {
         setSummary(result);
       }).catch((err) => {

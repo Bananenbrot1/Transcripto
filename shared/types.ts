@@ -90,6 +90,7 @@ export interface LiveSummarizeRequest {
   corrections: string[];
   recentSegments: { speaker: string; text: string; timestamp: number }[];
   formatTemplate: string;
+  isFinal?: boolean;
 }
 
 export type LiveSummaryGenerationStatus = 'idle' | 'generating' | 'error';

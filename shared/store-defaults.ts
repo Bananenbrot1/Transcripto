@@ -52,7 +52,10 @@ Write the summary in {{language}}.
 ### Key Topics
 ### Decisions
 ### Action Items
-### Open Questions
+### Open Points
+(Things raised but not yet resolved — remove once addressed)
+### Recommendations
+(Important topics not yet covered given the nature of this meeting — remove once discussed)
 ### Discussion
 Use bullet points. Keep it concise. Omit any section that has no content yet.`,
   },
