@@ -78,6 +78,7 @@ export function OnboardingFlow({
               key="language"
               direction={direction}
               selectedLanguage={selectedLanguage}
+              isParakeet={models.find((m) => m.id === selectedModel)?.engine === 'parakeet'}
               onSelectLanguage={onSelectLanguage}
               onNext={goNext}
               onBack={goBack}

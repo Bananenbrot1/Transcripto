@@ -26,12 +26,16 @@ export interface DiarizationSegment {
   end: number;       // seconds from recording start
 }
 
+export type ModelEngine = 'whisper' | 'parakeet';
+
 export interface ModelDefinition {
   id: string;
   fileName: string;
   sizeMB: number;
   label: string;
   sha256?: string;
+  engine: ModelEngine;
+  supportedLanguages?: string[];
 }
 
 export interface ModelStatus {
@@ -39,7 +43,9 @@ export interface ModelStatus {
   downloading: boolean;
   progress: number;
   error: string | null;
+  /** @deprecated Use modelReady instead */
   whisperReady: boolean;
+  modelReady: boolean;
 }
 
 export interface TranscribeSegment {

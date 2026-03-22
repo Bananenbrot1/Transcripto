@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Download, Loader2, AlertCircle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { LANGUAGES } from '@/lib/languages';
+import { LANGUAGES, PARAKEET_LANGUAGES } from '@/lib/languages';
 import type { ModelStatus, ModelDefinition } from '@/types/transcription';
 
 function formatSize(mb: number) {
@@ -42,12 +42,20 @@ export function ModelDownloadScreen({
   }, [status.error, initializing]);
 
   // Show loading screen while initializing
+  const currentModelDef = models.find((m) => m.id === selectedModel);
+  const isParakeet = currentModelDef?.engine === 'parakeet';
+
+  // Filter languages based on selected model's engine
+  const availableLanguages = isParakeet
+    ? LANGUAGES.filter((l) => l.code === 'auto' || PARAKEET_LANGUAGES.has(l.code))
+    : LANGUAGES;
+
   if (initializing && !status.whisperReady && !status.error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
         <div className="text-center space-y-4 max-w-md">
           <Loader2 className="size-12 mx-auto animate-spin text-muted-foreground" />
-          <h1 className="text-2xl font-bold">Initializing Whisper</h1>
+          <h1 className="text-2xl font-bold">Initializing Model</h1>
           <p className="text-muted-foreground">
             Loading the transcription model. This may take a moment...
           </p>
@@ -89,7 +97,7 @@ export function ModelDownloadScreen({
                 onChange={(e) => onSelectLanguage(e.target.value)}
                 disabled={status.downloading}
               >
-                {LANGUAGES.map((l) => (
+                {availableLanguages.map((l) => (
                   <option key={l.code} value={l.code}>
                     {l.label}
                   </option>

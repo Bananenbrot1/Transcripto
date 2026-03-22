@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { StepWrapper } from '../step-wrapper';
 import type { ModelStatus, ModelDefinition } from '@/types/transcription';
 
-const RECOMMENDED_MODEL = 'large-v3-turbo-q5';
+const RECOMMENDED_MODEL = 'parakeet-tdt-0.6b-v3';
 
 function formatSize(mb: number) {
   return mb >= 1000 ? `~${(mb / 1000).toFixed(1)} GB` : `~${mb} MB`;

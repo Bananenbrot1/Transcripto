@@ -3,12 +3,13 @@ import { motion } from 'motion/react';
 import { ChevronLeft, ArrowRight, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { LANGUAGES } from '@/lib/languages';
+import { LANGUAGES, PARAKEET_LANGUAGES } from '@/lib/languages';
 import { StepWrapper } from '../step-wrapper';
 
 interface LanguageStepProps {
   direction: number;
   selectedLanguage: string;
+  isParakeet?: boolean;
   onSelectLanguage: (lang: string) => void;
   onNext: () => void;
   onBack: () => void;
@@ -17,17 +18,22 @@ interface LanguageStepProps {
 export function LanguageStep({
   direction,
   selectedLanguage,
+  isParakeet,
   onSelectLanguage,
   onNext,
   onBack,
 }: LanguageStepProps) {
   const [search, setSearch] = useState('');
 
+  const baseLanguages = isParakeet
+    ? LANGUAGES.filter((l) => l.code === 'auto' || PARAKEET_LANGUAGES.has(l.code))
+    : LANGUAGES;
+
   const filtered = search
-    ? LANGUAGES.filter((l) =>
+    ? baseLanguages.filter((l) =>
         l.label.toLowerCase().includes(search.toLowerCase()),
       )
-    : LANGUAGES;
+    : baseLanguages;
 
   return (
     <StepWrapper direction={direction}>

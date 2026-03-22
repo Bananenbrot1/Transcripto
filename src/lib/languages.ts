@@ -21,4 +21,22 @@ export const LANGUAGES: { code: string; label: string }[] = [
   { code: 'fi', label: 'Finnish' },
   { code: 'cs', label: 'Czech' },
   { code: 'uk', label: 'Ukrainian' },
+  { code: 'bg', label: 'Bulgarian' },
+  { code: 'hr', label: 'Croatian' },
+  { code: 'et', label: 'Estonian' },
+  { code: 'el', label: 'Greek' },
+  { code: 'hu', label: 'Hungarian' },
+  { code: 'lv', label: 'Latvian' },
+  { code: 'lt', label: 'Lithuanian' },
+  { code: 'mt', label: 'Maltese' },
+  { code: 'ro', label: 'Romanian' },
+  { code: 'sk', label: 'Slovak' },
+  { code: 'sl', label: 'Slovenian' },
 ];
+
+/** Language codes supported by Parakeet-TDT-0.6B-v3 */
+export const PARAKEET_LANGUAGES = new Set([
+  'bg', 'hr', 'cs', 'da', 'nl', 'en', 'et', 'fi', 'fr', 'de',
+  'el', 'hu', 'it', 'lv', 'lt', 'mt', 'pl', 'pt', 'ro', 'sk',
+  'sl', 'es', 'sv', 'ru', 'uk',
+]);

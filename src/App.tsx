@@ -13,6 +13,7 @@ import { LANGUAGES } from '@/lib/languages';
 import { migrateFromLocalStorage } from '@/lib/migrate-local-storage';
 import { loadSession, saveSummary } from '@/hooks/use-session-persistence';
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
+import { ModelDownloadScreen } from '@/components/model-download-screen';
 import { SettingsDialog } from '@/components/settings-dialog';
 import { RecordButton } from '@/components/record-button';
 import { Button } from '@/components/ui/button';
@@ -208,6 +209,7 @@ export function App() {
   }, [recordingState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const autoInitAttempted = useRef(false);
+  const [changingModel, setChangingModel] = useState(false);
 
   // Dark mode — null means follow system preference
   const [systemDark, setSystemDark] = useState(() =>
@@ -409,8 +411,25 @@ export function App() {
     );
   }
 
-  // Show loading while whisper initializes on subsequent launches
+  // Show model selection/download screen or loading spinner when model is not ready
   if (!status.whisperReady) {
+    // User explicitly clicked "Change model" — show model selection screen
+    if (changingModel) {
+      return (
+        <ModelDownloadScreen
+          status={status}
+          models={models}
+          selectedModel={selectedModel}
+          selectedLanguage={selectedLanguage}
+          downloadedModels={downloadedModels}
+          onSelectModel={setSelectedModel}
+          onSelectLanguage={setSelectedLanguage}
+          onDownload={downloadModel}
+          onInitialize={() => { setChangingModel(false); initializeWhisper(); }}
+        />
+      );
+    }
+    // Auto-init on app startup — show loading spinner
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
         <div className="text-center space-y-4">
@@ -730,7 +749,7 @@ export function App() {
         currentModel={currentModel}
         selectedLanguage={selectedLanguage}
         onSelectLanguage={setSelectedLanguage}
-        onChangeModel={() => { setSettingsOpen(false); changeModel(); }}
+        onChangeModel={() => { setSettingsOpen(false); setChangingModel(true); changeModel(); }}
         isCapturing={isCapturing}
         showDebug={showDebug}
         onShowDebugChange={setShowDebug}

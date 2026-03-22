@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { LANGUAGES } from '@/lib/languages';
+import { LANGUAGES, PARAKEET_LANGUAGES } from '@/lib/languages';
 import type { ExportSettings } from '@/hooks/use-export-settings';
 import type { SummarySettings } from '@/hooks/use-summary-settings';
 import type { VADSettings } from '@/hooks/use-vad-settings';
@@ -510,6 +510,11 @@ export function SettingsDialog({
     ? currentModel.label.split(' — ')[0].split(' (')[0]
     : 'Unknown';
 
+  const isParakeet = currentModel?.engine === 'parakeet';
+  const availableLanguages = isParakeet
+    ? LANGUAGES.filter((l) => l.code === 'auto' || PARAKEET_LANGUAGES.has(l.code))
+    : LANGUAGES;
+
   const currentAppearance = toAppearanceMode(darkMode);
 
   const handleShortcutChange = (action: ShortcutAction, value: string | null) => {
@@ -590,7 +595,7 @@ export function SettingsDialog({
                     disabled={isCapturing}
                     className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
                   >
-                    {LANGUAGES.map((l) => (
+                    {availableLanguages.map((l) => (
                       <option key={l.code} value={l.code}>{l.label}</option>
                     ))}
                   </select>
