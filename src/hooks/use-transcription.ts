@@ -19,6 +19,7 @@ interface UseTranscriptionOptions {
 export function useTranscription({ language, vadOptions }: UseTranscriptionOptions) {
   const [segments, setSegments] = useState<TranscriptSegment[]>(() => loadSession()?.segments ?? []);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
   const [micRMS, setMicRMS] = useState(0);
   const [systemRMS, setSystemRMS] = useState(0);
   const [recordingStartTime, setRecordingStartTime] = useState(() => loadSession()?.recordingStartTime ?? 0);
@@ -35,13 +36,12 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     async (source: 'mic' | 'system', audioBuffer: ArrayBuffer, speechStartMs: number) => {
       const timestamp = Date.now();
       pendingRef.current++;
-      console.log(`[transcription] onSpeechEnd: source=${source}, byteLength=${audioBuffer.byteLength}, pending=${pendingRef.current}`);
 
       try {
         const result = await window.electronAPI.transcribe(source, audioBuffer, languageRef.current);
-        console.log(`[transcription] IPC result: source=${source}, text="${result.text.slice(0, 80)}", segments=${result.segments.length}`);
+        setTranscriptionError(null);
 
-        if (result.text) {
+        if (result.text && result.text.trim().length > 0) {
           if (source === 'mic') {
             const newSegment: TranscriptSegment = {
               id: `seg-${++segmentCounterRef.current}`,
@@ -107,9 +107,9 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
         }
       } catch (err) {
         console.error(`[transcription] IPC error (${source}):`, err);
+        setTranscriptionError(err instanceof Error ? err.message : String(err));
       } finally {
         pendingRef.current--;
-        console.log(`[transcription] onSpeechEnd done: source=${source}, pending=${pendingRef.current}`);
         if (pendingRef.current === 0 && drainResolveRef.current) {
           drainResolveRef.current();
           drainResolveRef.current = null;
@@ -140,6 +140,7 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
   const startRecording = useCallback(async () => {
     clearSession();
     setRecordingState('recording');
+    setTranscriptionError(null);
     const now = Date.now();
     setRecordingStartTime(now);
     recordingStartTimeRef.current = now;
@@ -208,6 +209,7 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
   return {
     segments,
     recordingState,
+    transcriptionError,
     recordingStartTime,
     isCapturing,
     systemAudioStatus,

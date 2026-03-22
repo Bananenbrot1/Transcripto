@@ -117,10 +117,17 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
       const audioContext = new AudioContext({ sampleRate: 48000 });
       await audioContext.audioWorklet.addModule('./pcm-worklet-processor.js');
 
+      // On CPU-only systems, very long VAD segments can make Whisper appear hung.
+      // Keep live segments bounded so inference returns regularly.
+      const effectiveVADOptions: VADOptions = {
+        ...vadOptions,
+        maxSegmentMs: Math.min(vadOptions?.maxSegmentMs ?? 30000, 12000),
+      };
+
       const sourceNode = audioContext.createMediaStreamSource(stream);
       const workletNode = new AudioWorkletNode(audioContext, 'pcm-worklet-processor');
 
-      const vad = new SimpleVAD(vadOptions, {
+      const vad = new SimpleVAD(effectiveVADOptions, {
         onSpeechEnd: (audio, speechStartMs) => {
           callbacksRef.current.onSpeechEnd(source, float32ToArrayBuffer(audio), speechStartMs);
         },
@@ -162,7 +169,7 @@ export function useAudioCapture(callbacks: AudioCaptureCallbacks, vadOptions?: V
 
       return { stream, audioContext, workletNode, vad, onStateChange };
     },
-    [scheduleRMSUpdate],
+    [scheduleRMSUpdate, vadOptions],
   );
 
   const startCapture = useCallback(async () => {

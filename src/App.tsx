@@ -67,6 +67,7 @@ export function App() {
   const {
     segments,
     recordingState,
+    transcriptionError,
     recordingStartTime,
     isCapturing,
     systemAudioStatus,
@@ -461,6 +462,12 @@ export function App() {
 
       <main className="flex-1 overflow-hidden flex flex-col px-6 py-4 gap-3">
         {showPermissionBannerInMain && <PermissionBanner />}
+        {transcriptionError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <p className="font-medium">Transcription error</p>
+            <p>{transcriptionError}</p>
+          </div>
+        )}
         {summary && showPostRecordingBar && (
           <div className="flex border-b -mx-6 px-6 shrink-0">
             <button

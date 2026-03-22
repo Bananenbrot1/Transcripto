@@ -49,11 +49,8 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('transcribe', async (_event, source: 'mic' | 'system', audioBuffer: ArrayBuffer, language: string) => {
-    console.log(`[main] IPC transcribe: source=${source}, lang=${language}, byteLength=${audioBuffer?.byteLength}`);
     try {
-      const result = await whisperService.transcribe(source, audioBuffer, language);
-      console.log(`[main] IPC transcribe done: text="${result.text.slice(0, 60)}"`);
-      return result;
+      return await whisperService.transcribe(source, audioBuffer, language);
     } catch (err) {
       console.error('[main] IPC transcribe error:', err);
       throw err;
@@ -266,10 +263,29 @@ function createWindow(): void {
     }
   });
 
+  const rendererPath = path.join(__dirname, '..', '..', 'dist', 'index.html');
+  const devUrl = 'http://localhost:5173';
+
   if (isDev) {
-    win.loadURL('http://localhost:5173');
+    let didFallback = false;
+    const fallbackToBuiltRenderer = () => {
+      if (didFallback) return;
+      didFallback = true;
+      void win.loadFile(rendererPath);
+    };
+
+    win.webContents.once('did-fail-load', (_event, _code, _desc, _validatedURL) => {
+      fallbackToBuiltRenderer();
+    });
+
+    void win.loadURL(devUrl).catch((err) => {
+      if ((err as { code?: string })?.code !== 'ERR_ABORTED') {
+        console.warn('[main] Failed to load dev URL:', err);
+      }
+      fallbackToBuiltRenderer();
+    });
   } else {
-    win.loadFile(path.join(__dirname, '..', '..', 'dist', 'index.html'));
+    void win.loadFile(rendererPath);
   }
 }
 

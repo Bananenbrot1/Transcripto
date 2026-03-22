@@ -4,7 +4,10 @@ import type { WhisperContext, NewSegmentsEvent } from '@fugood/whisper.node';
 import type { TranscribeResult, FileTranscribeProgress, TranscribeSegment } from '../../shared/types.js';
 
 const TURN_MARKER = ' [SPEAKER_TURN]';
-const TRANSCRIBE_TIMEOUT_MS = 20_000;
+const TRANSCRIBE_MIN_TIMEOUT_MS = 120_000;
+const TRANSCRIBE_BASE_TIMEOUT_MS = 60_000;
+const TRANSCRIBE_TIMEOUT_PER_AUDIO_SEC_MS = 20_000;
+const TRANSCRIBE_MAX_TIMEOUT_MS = 900_000;
 const isDev = !app.isPackaged;
 
 function log(...args: unknown[]) {
@@ -36,9 +39,25 @@ export async function initialize(modelPath: string): Promise<void> {
     await release();
   }
 
+  // Try GPU first, fall back to CPU if it fails
+  const initWithFallback = async () => {
+    try {
+      log('[whisper] attempting GPU initialization...');
+      return await whisperNode.initWhisper({ filePath: modelPath, useGpu: true });
+    } catch (gpuErr) {
+      log('[whisper] GPU init failed, falling back to CPU:', gpuErr);
+      try {
+        return await whisperNode.initWhisper({ filePath: modelPath, useGpu: false });
+      } catch (cpuErr) {
+        log('[whisper] CPU init also failed:', cpuErr);
+        throw cpuErr;
+      }
+    }
+  };
+
   [micContext, sysContext] = await Promise.all([
-    whisperNode.initWhisper({ filePath: modelPath, useGpu: true }),
-    whisperNode.initWhisper({ filePath: modelPath, useGpu: true }),
+    initWithFallback(),
+    initWithFallback(),
   ]);
   micHead = Promise.resolve();
   sysHead = Promise.resolve();
@@ -60,6 +79,14 @@ async function doTranscribe(
   }
 
   const float32Length = audioBuffer.byteLength / 4;
+  const durationSec = float32Length / 16_000;
+  const timeoutMs = Math.max(
+    TRANSCRIBE_MIN_TIMEOUT_MS,
+    Math.min(
+      TRANSCRIBE_MAX_TIMEOUT_MS,
+      Math.ceil(TRANSCRIBE_BASE_TIMEOUT_MS + durationSec * TRANSCRIBE_TIMEOUT_PER_AUDIO_SEC_MS),
+    ),
+  );
   log(`[whisper] transcribe start: source=${source}, lang=${language}, float32Samples=${float32Length}`);
 
   const float32 = new Float32Array(audioBuffer);
@@ -71,13 +98,14 @@ async function doTranscribe(
   log(`[whisper] transcribe: converted to ${int16.length} int16 samples`);
 
   const collectedSegments: Array<{ text: string; t0: number; t1: number }> = [];
+  const whisperLanguage = !language || language === 'auto' ? undefined : language;
 
   log('[whisper] transcribe: calling ctx.transcribeData...');
   const { promise: nativePromise } = ctx.transcribeData(int16.buffer, {
-    language: language || 'auto',
+    language: whisperLanguage,
     maxLen: 0,
     temperature: 0.0,
-    tdrzEnable: true,
+    tdrzEnable: source === 'system',
     onNewSegments: (event: NewSegmentsEvent) => {
       log('[whisper] onNewSegments received:', typeof event, JSON.stringify(event));
       try {
@@ -95,10 +123,13 @@ async function doTranscribe(
   nativePromise.then(releaseGate, releaseGate);
 
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`[whisper] transcribeData timed out after ${TRANSCRIBE_TIMEOUT_MS}ms`)), TRANSCRIBE_TIMEOUT_MS),
+    setTimeout(
+      () => reject(new Error(`[whisper] transcribeData timed out after ${timeoutMs}ms (duration=${durationSec.toFixed(1)}s)`)),
+      timeoutMs,
+    ),
   );
 
-  log('[whisper] transcribe: awaiting promise (timeout=' + TRANSCRIBE_TIMEOUT_MS + 'ms)...');
+  log('[whisper] transcribe: awaiting promise (timeout=' + timeoutMs + 'ms, duration=' + durationSec.toFixed(1) + 's)...');
   try {
     await Promise.race([nativePromise, timeout]);
     log(`[whisper] transcribe: promise resolved, collectedSegments=${collectedSegments.length}`);
@@ -211,7 +242,7 @@ export async function transcribeFile(
     const collectedSegments: Array<{ text: string; t0: number; t1: number }> = [];
 
     const { promise: nativePromise } = micContext.transcribeData(int16.buffer, {
-      language: language || 'auto',
+      language: !language || language === 'auto' ? undefined : language,
       maxLen: 0,
       temperature: 0.0,
       tdrzEnable: false,
