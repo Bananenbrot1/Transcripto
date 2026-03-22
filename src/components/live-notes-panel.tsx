@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { ClipboardCopy, Loader2, Send, X, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,6 @@ interface LiveNotesPanelProps {
   corrections: string[];
   onAddCorrection: (correction: string) => void;
   onRemoveCorrection: (index: number) => void;
-  onInlineEdit: (oldText: string, newText: string) => void;
 }
 
 export function LiveNotesPanel({
@@ -21,14 +20,10 @@ export function LiveNotesPanel({
   corrections,
   onAddCorrection,
   onRemoveCorrection,
-  onInlineEdit,
 }: LiveNotesPanelProps) {
   const [copied, setCopied] = useState(false);
   const [correctionInput, setCorrectionInput] = useState('');
   const [correctionsExpanded, setCorrectionsExpanded] = useState(false);
-  const [editingRange, setEditingRange] = useState<{ start: number; end: number } | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const editRef = useRef<HTMLTextAreaElement>(null);
 
   const handleCopy = useCallback(() => {
     if (!summary) return;
@@ -51,85 +46,6 @@ export function LiveNotesPanel({
       handleSubmitCorrection();
     }
   }, [handleSubmitCorrection]);
-
-  // Inline editing: on double-click, capture the selected text or paragraph
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    const selection = window.getSelection();
-    if (!selection || !summary) return;
-
-    const text = summary.text;
-    const clickTarget = e.target as HTMLElement;
-    const textContent = clickTarget.textContent || '';
-
-    // Find the paragraph/line that was clicked
-    const lines = text.split('\n');
-    let offset = 0;
-    for (const line of lines) {
-      if (textContent.includes(line.trim()) && line.trim().length > 0) {
-        setEditingRange({ start: offset, end: offset + line.length });
-        setEditValue(line);
-        setTimeout(() => editRef.current?.focus(), 0);
-        return;
-      }
-      offset += line.length + 1; // +1 for newline
-    }
-  }, [summary]);
-
-  const handleEditSave = useCallback(() => {
-    if (!editingRange || !summary) return;
-    const oldText = summary.text.slice(editingRange.start, editingRange.end);
-    const newText = editValue;
-    if (oldText !== newText) {
-      onInlineEdit(oldText, newText);
-    }
-    setEditingRange(null);
-    setEditValue('');
-  }, [editingRange, editValue, summary, onInlineEdit]);
-
-  const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleEditSave();
-    } else if (e.key === 'Escape') {
-      setEditingRange(null);
-      setEditValue('');
-    }
-  }, [handleEditSave]);
-
-  // Render summary text with inline edit support
-  const renderSummaryText = () => {
-    if (!summary) return null;
-
-    if (editingRange) {
-      const before = summary.text.slice(0, editingRange.start);
-      const after = summary.text.slice(editingRange.end);
-      return (
-        <div className="whitespace-pre-wrap text-sm">
-          {before}
-          <textarea
-            ref={editRef}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleEditSave}
-            onKeyDown={handleEditKeyDown}
-            className="w-full bg-primary/5 border border-primary rounded px-1 py-0.5 text-sm font-inherit resize-none outline-none"
-            rows={editValue.split('\n').length}
-          />
-          {after}
-        </div>
-      );
-    }
-
-    return (
-      <div
-        className="whitespace-pre-wrap text-sm cursor-text"
-        onDoubleClick={handleDoubleClick}
-        title="Double-click to edit"
-      >
-        {summary.text}
-      </div>
-    );
-  };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -159,7 +75,9 @@ export function LiveNotesPanel({
       {/* Summary content */}
       <div className="flex-1 overflow-y-auto pr-1 min-h-0">
         {summary ? (
-          renderSummaryText()
+          <div className="whitespace-pre-wrap text-sm">
+            {summary.text}
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground italic">
             Waiting for enough transcript to generate notes...

@@ -574,9 +574,6 @@ export function App() {
                   corrections={corrections}
                   onAddCorrection={addCorrection}
                   onRemoveCorrection={removeCorrection}
-                  onInlineEdit={(oldText, newText) => {
-                    addCorrection(`Changed "${oldText.slice(0, 50)}" to "${newText.slice(0, 50)}"`);
-                  }}
                 />
               </div>
             </ResizablePanel>
