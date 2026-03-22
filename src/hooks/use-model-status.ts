@@ -9,6 +9,7 @@ export function useModelStatus() {
     progress: 0,
     error: null,
     whisperReady: false,
+    modelReady: false,
   });
 
   const [models, setModels] = useState<ModelDefinition[]>([]);
@@ -67,7 +68,7 @@ export function useModelStatus() {
   const initializeWhisper = useCallback(async () => {
     try {
       await window.electronAPI.initializeWhisper(selectedModel);
-      setStatus((s) => ({ ...s, whisperReady: true }));
+      setStatus((s) => ({ ...s, whisperReady: true, modelReady: true }));
     } catch (err) {
       setStatus((s) => ({
         ...s,
@@ -83,7 +84,7 @@ export function useModelStatus() {
 
   const changeModel = useCallback(async () => {
     await window.electronAPI.releaseWhisper();
-    setStatus((s) => ({ ...s, whisperReady: false, downloaded: false }));
+    setStatus((s) => ({ ...s, whisperReady: false, modelReady: false, downloaded: false }));
     await refreshDownloadedModels();
   }, [refreshDownloadedModels]);
 

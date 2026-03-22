@@ -3,15 +3,18 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as modelManager from './services/model-manager.js';
 import * as whisperService from './services/whisper-service.js';
+import * as parakeetService from './services/parakeet-service.js';
 import * as markdownExport from './services/markdown-export.js';
 import * as diarizationModelManager from './services/diarization-model-manager.js';
 import * as diarizationService from './services/diarization-service.js';
 import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
 import * as summaryService from './services/summary-service.js';
-import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest } from '../shared/types.js';
+import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
+
+let activeEngine: ModelEngine | null = null;
 
 const isDev = !app.isPackaged;
 
@@ -44,14 +47,29 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('initialize-whisper', async (_event, modelId: string) => {
+    const modelDef = modelManager.getModelDefinition(modelId);
     const modelPath = modelManager.getModelPath(modelId);
-    await whisperService.initialize(modelPath);
+
+    // Release the other engine if switching
+    if (activeEngine === 'whisper' && modelDef.engine === 'parakeet') {
+      await whisperService.release();
+    } else if (activeEngine === 'parakeet' && modelDef.engine === 'whisper') {
+      await parakeetService.release();
+    }
+
+    if (modelDef.engine === 'parakeet') {
+      await parakeetService.initialize(modelPath);
+    } else {
+      await whisperService.initialize(modelPath);
+    }
+    activeEngine = modelDef.engine;
   });
 
   ipcMain.handle('transcribe', async (_event, source: 'mic' | 'system', audioBuffer: ArrayBuffer, language: string) => {
-    console.log(`[main] IPC transcribe: source=${source}, lang=${language}, byteLength=${audioBuffer?.byteLength}`);
+    console.log(`[main] IPC transcribe: source=${source}, lang=${language}, engine=${activeEngine}, byteLength=${audioBuffer?.byteLength}`);
     try {
-      const result = await whisperService.transcribe(source, audioBuffer, language);
+      const service = activeEngine === 'parakeet' ? parakeetService : whisperService;
+      const result = await service.transcribe(source, audioBuffer, language);
       console.log(`[main] IPC transcribe done: text="${result.text.slice(0, 60)}"`);
       return result;
     } catch (err) {
@@ -61,7 +79,12 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('release-whisper', async () => {
-    await whisperService.release();
+    if (activeEngine === 'parakeet') {
+      await parakeetService.release();
+    } else {
+      await whisperService.release();
+    }
+    activeEngine = null;
   });
 
   ipcMain.handle('get-media-permissions', () => {
@@ -190,9 +213,10 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('transcribe-file', async (event, audioBuffer: ArrayBuffer, language: string, totalDurationSec: number) => {
-    console.log(`[main] IPC transcribe-file: lang=${language}, duration=${totalDurationSec}s, byteLength=${audioBuffer?.byteLength}`);
+    console.log(`[main] IPC transcribe-file: lang=${language}, engine=${activeEngine}, duration=${totalDurationSec}s, byteLength=${audioBuffer?.byteLength}`);
     try {
-      const result = await whisperService.transcribeFile(audioBuffer, language, totalDurationSec, (progress) => {
+      const service = activeEngine === 'parakeet' ? parakeetService : whisperService;
+      const result = await service.transcribeFile(audioBuffer, language, totalDurationSec, (progress) => {
         event.sender.send('transcribe-file-progress', progress);
       });
       console.log(`[main] IPC transcribe-file done: segments=${result.segments.length}`);
