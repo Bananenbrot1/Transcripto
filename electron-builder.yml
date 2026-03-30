@@ -36,6 +36,7 @@ mac:
   category: public.app-category.productivity
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  identity: "Developer ID Application: Christian Schlaiss (GD6MGSB73Q)"
   hardenedRuntime: true
   gatekeeperAssess: false
   # Usage descriptions shown in macOS permission dialogs
@@ -43,6 +44,8 @@ mac:
     NSMicrophoneUsageDescription: "Transcripto needs microphone access to transcribe your speech."
     NSScreenCaptureDescription: "Transcripto needs screen recording access to capture system audio from other apps."
 
+afterSign: build/notarize.js
+
 dmg:
   title: "${productName} ${version}"
-  # sign: true  # uncomment and add identity when you have an Apple Developer certificate
+  sign: true
