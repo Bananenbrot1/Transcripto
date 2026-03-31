@@ -26,6 +26,27 @@ export interface DiarizationSegment {
   end: number;       // seconds from recording start
 }
 
+/**
+ * A diarization segment enriched with source and cross-stream reconciliation
+ * metadata. Produced by CrossStreamReconciler.mergeStreamResults.
+ */
+export interface MergedSegment extends DiarizationSegment {
+  /** Which audio capture stream this segment originated from. */
+  source: 'mic' | 'system';
+  /**
+   * True when this segment has been suppressed as cross-stream echo.
+   * Suppressed segments are retained in the data but hidden in the UI by default.
+   */
+  suppressed: boolean;
+  /** Human-readable reason for suppression; only present when suppressed is true. */
+  reason?: 'cross-stream-echo';
+  /**
+   * True when this segment is flagged as a potential cross-stream match
+   * (similarity between flagThreshold and suppressThreshold).
+   */
+  flagged: boolean;
+}
+
 export type ModelEngine = 'whisper' | 'parakeet';
 
 export interface ModelDefinition {
