@@ -10,6 +10,24 @@ interface WorkerData {
   segmentationModelPath: string;
   embeddingModelPath: string;
   numSpeakers: number; // -1 = auto-detect
+  /**
+   * 'diarize-dual' — run OfflineSpeakerDiarization separately on each stream and
+   * return two independent segment arrays. Omit (or any other value) for the
+   * default single-stream mix-and-diarize mode.
+   */
+  type?: 'diarize-dual';
+}
+
+interface RawSegment {
+  speaker: number;
+  start: number;
+  end: number;
+}
+
+interface DiarizationSegment {
+  speaker: string;
+  start: number;
+  end: number;
 }
 
 const READ_CHUNK_BYTES = 4 * 1024 * 1024; // 4 MB read buffer
@@ -35,13 +53,56 @@ function readF32File(filePath: string, out: Float32Array, offset: number): void 
   }
 }
 
+function readF32FileToArray(filePath: string): Float32Array | null {
+  const size = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
+  if (size === 0) return null;
+  const samples = Math.floor(size / 4);
+  const audio = new Float32Array(samples);
+  readF32File(filePath, audio, 0);
+  return audio;
+}
+
+function mapSegments(rawSegments: RawSegment[]): DiarizationSegment[] {
+  return rawSegments.map((seg) => ({
+    speaker: `Speaker ${String.fromCharCode(65 + seg.speaker)}`,
+    start: seg.start,
+    end: seg.end,
+  }));
+}
+
 function clamp(v: number): number {
   return v < -1 ? -1 : v > 1 ? 1 : v;
 }
 
-async function run(): Promise<void> {
-  const { micPath, sysPath, segmentationModelPath, embeddingModelPath, numSpeakers } =
-    workerData as WorkerData;
+function makeDiarizer(
+  sherpaOnnx: { OfflineSpeakerDiarization: new (cfg: unknown) => { process: (audio: Float32Array) => RawSegment[] } },
+  segmentationModelPath: string,
+  embeddingModelPath: string,
+  numSpeakers: number,
+) {
+  return new sherpaOnnx.OfflineSpeakerDiarization({
+    segmentation: {
+      pyannote: { model: segmentationModelPath },
+    },
+    embedding: {
+      model: embeddingModelPath,
+    },
+    clustering: {
+      numClusters: numSpeakers,
+      // Only used when numClusters == -1 (auto-detect).
+      threshold: 0.5,
+    },
+    minDurationOn: 0.2,
+    minDurationOff: 0.5,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Single-stream mode (original behaviour)
+// ---------------------------------------------------------------------------
+
+async function runSingle(data: WorkerData): Promise<void> {
+  const { micPath, sysPath, segmentationModelPath, embeddingModelPath, numSpeakers } = data;
 
   const micSize = fs.existsSync(micPath) ? fs.statSync(micPath).size : 0;
   const sysSize = fs.existsSync(sysPath) ? fs.statSync(sysPath).size : 0;
@@ -89,32 +150,53 @@ async function run(): Promise<void> {
   }
 
   const sherpaOnnx = require('sherpa-onnx-node');
-
-  const diarizer = new sherpaOnnx.OfflineSpeakerDiarization({
-    segmentation: {
-      pyannote: { model: segmentationModelPath },
-    },
-    embedding: {
-      model: embeddingModelPath,
-    },
-    clustering: {
-      numClusters: numSpeakers,
-      // Only used when numClusters == -1 (auto-detect).
-      threshold: 0.5,
-    },
-    minDurationOn: 0.2,
-    minDurationOff: 0.5,
-  });
-
+  const diarizer = makeDiarizer(sherpaOnnx, segmentationModelPath, embeddingModelPath, numSpeakers);
   const rawSegments = diarizer.process(mixed);
-
-  const segments = rawSegments.map((seg: { speaker: number; start: number; end: number }) => ({
-    speaker: `Speaker ${String.fromCharCode(65 + seg.speaker)}`,
-    start: seg.start,
-    end: seg.end,
-  }));
+  const segments = mapSegments(rawSegments);
 
   parentPort!.postMessage({ type: 'result', segments });
+}
+
+// ---------------------------------------------------------------------------
+// Dual-stream mode (new behaviour)
+// ---------------------------------------------------------------------------
+
+async function runDual(data: WorkerData): Promise<void> {
+  const { micPath, sysPath, segmentationModelPath, embeddingModelPath, numSpeakers } = data;
+
+  const micAudio = readF32FileToArray(micPath);
+  const sysAudio = readF32FileToArray(sysPath);
+
+  if (!micAudio && !sysAudio) {
+    parentPort!.postMessage({ type: 'error', message: 'No audio data to diarize' });
+    return;
+  }
+
+  const sherpaOnnx = require('sherpa-onnx-node');
+  const diarizer = makeDiarizer(sherpaOnnx, segmentationModelPath, embeddingModelPath, numSpeakers);
+
+  const micSegments: DiarizationSegment[] = micAudio
+    ? mapSegments(diarizer.process(micAudio))
+    : [];
+
+  const sysSegments: DiarizationSegment[] = sysAudio
+    ? mapSegments(diarizer.process(sysAudio))
+    : [];
+
+  parentPort!.postMessage({ type: 'dual-result', micSegments, sysSegments });
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+async function run(): Promise<void> {
+  const data = workerData as WorkerData;
+  if (data.type === 'diarize-dual') {
+    await runDual(data);
+  } else {
+    await runSingle(data);
+  }
 }
 
 run().catch((err: unknown) => {

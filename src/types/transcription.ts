@@ -4,6 +4,7 @@ export type {
   RecordingState,
   TranscriptSegment,
   DiarizationSegment,
+  MergedSegment,
   ModelDefinition,
   ModelStatus,
   TranscribeResult,

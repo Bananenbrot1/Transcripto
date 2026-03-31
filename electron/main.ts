@@ -324,14 +324,14 @@ function registerIpcHandlers(): void {
     }, 1000);
     try {
       const { micPath, sysPath } = audioFileService.getPaths();
-      const raw = await diarizationService.diarizeFromFile(
+      const result = await diarizationService.diarizeFromFileDual(
         micPath,
         sysPath,
         diarizationModelManager.getSegmentationModelPath(),
         diarizationModelManager.getEmbeddingModelPath(),
         numSpeakers,
       );
-      return raw.map((seg) => ({ ...seg }));
+      return result.mergedSegments.map((seg) => ({ ...seg }));
     } finally {
       clearInterval(interval);
       audioFileService.cleanup();
