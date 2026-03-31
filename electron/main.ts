@@ -12,6 +12,7 @@ import * as settingsStore from './services/settings-store.js';
 import * as summaryService from './services/summary-service.js';
 import { SpeakerRegistry } from './services/speaker-registry.js';
 import type { SpeakerRegistryPersistenceDeps } from './services/speaker-registry.js';
+import { EmbeddingWorkerClient } from './services/embedding-worker-client.js';
 import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
@@ -23,6 +24,11 @@ let activeEngine: ModelEngine | null = null;
 // configured inside app.whenReady() to avoid Electron bug #45328 (safeStorage
 // is not available before the app is ready).
 export const speakerRegistry = new SpeakerRegistry();
+
+// EmbeddingWorkerClient manages the speaker-embedding worker thread lifecycle.
+// It is spawned when recording starts (open-audio-recording) and terminated
+// when recording stops (close-audio-recording).
+export const embeddingWorkerClient = new EmbeddingWorkerClient();
 
 const isDev = !app.isPackaged;
 
@@ -147,14 +153,28 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('open-audio-recording', () => {
     audioFileService.openRecording();
+    // Spawn the embedding worker if the selected model is already downloaded.
+    // If the model is absent, the worker simply won't run; the pipeline falls
+    // back to source-based labeling ('You' / 'Them') in TASK-008.
+    const modelId = diarizationModelManager.getSelectedEmbeddingModel();
+    if (diarizationModelManager.isEmbeddingModelDownloaded(modelId)) {
+      const modelPath = diarizationModelManager.getEmbeddingModelPathById(modelId);
+      embeddingWorkerClient.start(modelPath, modelId).catch((err: unknown) => {
+        console.error('[main] Failed to start embedding worker:', err);
+      });
+    }
   });
 
   ipcMain.on('write-audio-chunk', (_event, source: 'mic' | 'sys', samples: ArrayBuffer) => {
     audioFileService.appendChunk(source, Buffer.from(samples));
   });
 
-  ipcMain.handle('close-audio-recording', () => {
-    return audioFileService.closeRecording();
+  ipcMain.handle('close-audio-recording', async () => {
+    const result = audioFileService.closeRecording();
+    embeddingWorkerClient.stop().catch((err: unknown) => {
+      console.error('[main] Failed to stop embedding worker:', err);
+    });
+    return result;
   });
 
   ipcMain.handle('cleanup-audio-recording', () => {
