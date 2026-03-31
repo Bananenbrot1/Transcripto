@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SpeakerRegistry, cosineSimilarity, indexToLabel } from './speaker-registry.js';
+import type { SpeakerRegistryPersistenceDeps } from './speaker-registry.js';
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -282,5 +283,166 @@ describe('SpeakerRegistry', () => {
       const result = registry.matchOrCreate(new Float32Array([1, 0, 0]));
       expect(result.speakerLabel).toBe('Speaker A');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SpeakerRegistry — persistence
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a mock SpeakerRegistryPersistenceDeps that uses a simple in-memory
+ * store. The mock simulates encrypt/decrypt as a no-op (identity) so tests
+ * can focus on serialization round-trips without a real Electron environment.
+ */
+function makeMockDeps(
+  overrides: Partial<SpeakerRegistryPersistenceDeps> = {},
+): SpeakerRegistryPersistenceDeps & { store: Map<string, Buffer> } {
+  const store = new Map<string, Buffer>();
+
+  const deps: SpeakerRegistryPersistenceDeps & { store: Map<string, Buffer> } = {
+    store,
+    // Identity encrypt/decrypt — simply wraps the string in a Buffer.
+    encryptString: vi.fn((plaintext: string) => Buffer.from(plaintext, 'utf8')),
+    decryptString: vi.fn((encrypted: Buffer) => encrypted.toString('utf8')),
+    getUserDataPath: vi.fn().mockReturnValue('/mock/userData'),
+    writeFile: vi.fn((filePath: string, data: Buffer) => {
+      store.set(filePath, data);
+    }),
+    readFile: vi.fn((filePath: string) => {
+      const data = store.get(filePath);
+      if (!data) throw new Error(`File not found: ${filePath}`);
+      return data;
+    }),
+    fileExists: vi.fn((filePath: string) => store.has(filePath)),
+    deleteFile: vi.fn((filePath: string) => {
+      store.delete(filePath);
+    }),
+    ...overrides,
+  };
+  return deps;
+}
+
+describe('SpeakerRegistry — persistence', () => {
+  it('round-trips: persistSpeakers + loadPersistedSpeakers restores all fields', async () => {
+    const deps = makeMockDeps();
+    const registry = new SpeakerRegistry(deps);
+
+    // Create a speaker and enroll it.
+    const result = registry.matchOrCreate(new Float32Array([1, 0, 0]));
+    registry.enrollSpeaker(result.speakerId, 'Alice');
+    const entry = registry.getSpeaker(result.speakerId)!;
+    entry.totalDuration = 10;
+    entry.segmentCount = 5;
+
+    await registry.persistSpeakers();
+
+    // Create a fresh registry with the same deps and load.
+    const registry2 = new SpeakerRegistry(deps);
+    await registry2.loadPersistedSpeakers();
+
+    const speakers = registry2.getSpeakers();
+    expect(speakers).toHaveLength(1);
+    const loaded = speakers[0];
+    expect(loaded.speakerId).toBe(result.speakerId);
+    expect(loaded.speakerLabel).toBe('Alice');
+    expect(loaded.totalDuration).toBe(10);
+    expect(loaded.segmentCount).toBe(5);
+    expect(loaded.createdAt).toBe(entry.createdAt);
+    // Float32Array round-trip
+    expect(loaded.centroid[0]).toBeCloseTo(1);
+    expect(loaded.centroid[1]).toBeCloseTo(0);
+    expect(loaded.centroid[2]).toBeCloseTo(0);
+  });
+
+  it('round-trip preserves labelCounter so new speakers continue the sequence', async () => {
+    const deps = makeMockDeps();
+    const registry = new SpeakerRegistry(deps);
+
+    // Create two speakers (A and B), then persist.
+    registry.matchOrCreate(new Float32Array([1, 0, 0]));
+    registry.matchOrCreate(new Float32Array([0, 1, 0]));
+    await registry.persistSpeakers();
+
+    const registry2 = new SpeakerRegistry(deps);
+    await registry2.loadPersistedSpeakers();
+
+    // Next new speaker should be 'Speaker C', not 'Speaker A'.
+    const next = registry2.matchOrCreate(new Float32Array([0, 0, 1]));
+    expect(next.speakerLabel).toBe('Speaker C');
+  });
+
+  it('loadPersistedSpeakers resolves without error when file does not exist', async () => {
+    const deps = makeMockDeps();
+    // Nothing written to the store — file does not exist.
+    const registry = new SpeakerRegistry(deps);
+    await expect(registry.loadPersistedSpeakers()).resolves.toBeUndefined();
+    expect(registry.getSpeakers()).toHaveLength(0);
+  });
+
+  it('loadPersistedSpeakers logs the error and resets to empty when decryption fails', async () => {
+    const deps = makeMockDeps({
+      decryptString: vi.fn(() => {
+        throw new Error('decryption error');
+      }),
+    });
+
+    // Pre-populate the store with some encrypted data so fileExists returns true.
+    deps.store.set('/mock/userData/speaker-registry.enc', Buffer.from('garbage'));
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const registry = new SpeakerRegistry(deps);
+    await registry.loadPersistedSpeakers();
+
+    expect(registry.getSpeakers()).toHaveLength(0);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[SpeakerRegistry]'),
+      expect.any(Error),
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it('deletePersistedSpeakers removes the file and clears the in-memory registry', async () => {
+    const deps = makeMockDeps();
+    const registry = new SpeakerRegistry(deps);
+
+    registry.matchOrCreate(new Float32Array([1, 0, 0]));
+    await registry.persistSpeakers();
+    expect(registry.getSpeakers()).toHaveLength(1);
+    expect(deps.fileExists('/mock/userData/speaker-registry.enc')).toBe(true);
+
+    await registry.deletePersistedSpeakers();
+
+    expect(registry.getSpeakers()).toHaveLength(0);
+    expect(deps.fileExists('/mock/userData/speaker-registry.enc')).toBe(false);
+  });
+
+  it('deletePersistedSpeakers resolves cleanly when no file exists', async () => {
+    const deps = makeMockDeps();
+    const registry = new SpeakerRegistry(deps);
+    await expect(registry.deletePersistedSpeakers()).resolves.toBeUndefined();
+  });
+
+  it('exportRegistry returns encrypted bytes matching what persistSpeakers would write', async () => {
+    const deps = makeMockDeps();
+    const registry = new SpeakerRegistry(deps);
+    registry.matchOrCreate(new Float32Array([1, 0, 0]));
+
+    await registry.persistSpeakers();
+    const persisted = deps.store.get('/mock/userData/speaker-registry.enc')!;
+
+    const exported = await registry.exportRegistry();
+    // Both should encrypt the same plaintext, so the buffers should be equal.
+    expect(exported).toEqual(persisted);
+  });
+
+  it('persistence methods throw descriptive error when deps are not configured', async () => {
+    const registry = new SpeakerRegistry(); // no deps
+    await expect(registry.persistSpeakers()).rejects.toThrow(/persistence deps not configured/);
+    await expect(registry.loadPersistedSpeakers()).rejects.toThrow(/persistence deps not configured/);
+    await expect(registry.deletePersistedSpeakers()).rejects.toThrow(/persistence deps not configured/);
+    await expect(registry.exportRegistry()).rejects.toThrow(/persistence deps not configured/);
   });
 });

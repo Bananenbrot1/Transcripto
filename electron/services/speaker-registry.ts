@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import * as path from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,52 @@ export interface MatchOrCreateResult {
   confidence: number;
   /** True when a new speaker entry was created. */
   isNew: boolean;
+}
+
+/**
+ * Injectable persistence dependencies for SpeakerRegistry.
+ *
+ * Injecting these rather than importing Electron/fs directly keeps the class
+ * testable without any vi.mock() boilerplate — tests pass a mock object.
+ *
+ * In production, wire this after `app.whenReady()` to avoid Electron bug
+ * #45328 (safeStorage not available before app is ready).
+ */
+export interface SpeakerRegistryPersistenceDeps {
+  /** safeStorage.encryptString: encrypts a UTF-8 string to a Buffer. */
+  encryptString(plaintext: string): Buffer;
+  /** safeStorage.decryptString: decrypts a Buffer back to a UTF-8 string. */
+  decryptString(encrypted: Buffer): string;
+  /** Returns the user-data directory path (wraps app.getPath('userData')). */
+  getUserDataPath(): string;
+  /** fs.writeFileSync */
+  writeFile(filePath: string, data: Buffer): void;
+  /** fs.readFileSync returning a Buffer */
+  readFile(filePath: string): Buffer;
+  /** fs.existsSync */
+  fileExists(filePath: string): boolean;
+  /** fs.unlinkSync */
+  deleteFile(filePath: string): void;
+}
+
+// ---------------------------------------------------------------------------
+// Serialization helpers (internal)
+// ---------------------------------------------------------------------------
+
+interface SerializedSpeakerEntry {
+  speakerId: string;
+  speakerLabel: string;
+  /** Float32Array serialized as a plain number array for JSON. */
+  centroid: number[];
+  totalDuration: number;
+  segmentCount: number;
+  createdAt: number;
+}
+
+interface SerializedRegistry {
+  version: 1;
+  labelCounter: number;
+  speakers: SerializedSpeakerEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +135,28 @@ export function indexToLabel(index: number): string {
 export class SpeakerRegistry extends EventEmitter {
   private readonly speakers: Map<string, SpeakerEntry> = new Map();
   private labelCounter = 0;
+
+  private static readonly PERSISTENCE_FILENAME = 'speaker-registry.enc';
+
+  private persistenceDeps: SpeakerRegistryPersistenceDeps | undefined;
+
+  constructor(persistenceDeps?: SpeakerRegistryPersistenceDeps) {
+    super();
+    this.persistenceDeps = persistenceDeps;
+  }
+
+  /**
+   * Configures persistence dependencies after construction.
+   *
+   * This exists because the registry must be created early (before
+   * `app.whenReady()`) so that IPC handlers can reference it, but Electron's
+   * `safeStorage` API is only available after the app is ready (bug #45328).
+   * Call this inside the `app.whenReady()` callback before calling
+   * `loadPersistedSpeakers()`.
+   */
+  setPersistenceDeps(deps: SpeakerRegistryPersistenceDeps): void {
+    this.persistenceDeps = deps;
+  }
 
   // ---------------------------------------------------------------------------
   // Core API
@@ -227,5 +296,130 @@ export class SpeakerRegistry extends EventEmitter {
   clear(): void {
     this.speakers.clear();
     this.labelCounter = 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Persistence
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Serializes the registry to JSON, encrypts it via safeStorage, and writes
+   * the encrypted bytes to a file in the Electron userData directory.
+   *
+   * @throws if persistence deps were not provided to the constructor.
+   */
+  async persistSpeakers(): Promise<void> {
+    const deps = this.requirePersistenceDeps();
+    const plaintext = this.serializeToJson();
+    const encrypted = deps.encryptString(plaintext);
+    deps.writeFile(this.persistencePath(deps), encrypted);
+  }
+
+  /**
+   * Reads the persisted registry file, decrypts it, and populates the
+   * in-memory registry.
+   *
+   * - If the file does not exist, resolves without error (clean first run).
+   * - If decryption or parsing fails, logs the error and resets to an empty
+   *   registry rather than throwing, so the app remains usable.
+   *
+   * IMPORTANT: call this only after `app.whenReady()` resolves. Electron's
+   * safeStorage is not available before the app is ready (bug #45328).
+   *
+   * @throws if persistence deps were not provided to the constructor.
+   */
+  async loadPersistedSpeakers(): Promise<void> {
+    const deps = this.requirePersistenceDeps();
+    const filePath = this.persistencePath(deps);
+    if (!deps.fileExists(filePath)) {
+      return;
+    }
+    try {
+      const encrypted = deps.readFile(filePath);
+      const plaintext = deps.decryptString(encrypted);
+      this.deserializeFromJson(plaintext);
+    } catch (err) {
+      console.error('[SpeakerRegistry] Failed to load persisted speakers — resetting to empty registry:', err);
+      this.speakers.clear();
+      this.labelCounter = 0;
+    }
+  }
+
+  /**
+   * Deletes the persisted registry file and clears the in-memory registry.
+   *
+   * @throws if persistence deps were not provided to the constructor.
+   */
+  async deletePersistedSpeakers(): Promise<void> {
+    const deps = this.requirePersistenceDeps();
+    const filePath = this.persistencePath(deps);
+    if (deps.fileExists(filePath)) {
+      deps.deleteFile(filePath);
+    }
+    this.speakers.clear();
+    this.labelCounter = 0;
+  }
+
+  /**
+   * Returns the encrypted registry bytes for user backup purposes.
+   * The returned Buffer contains the same content that would be written by
+   * `persistSpeakers()`.
+   *
+   * @throws if persistence deps were not provided to the constructor.
+   */
+  async exportRegistry(): Promise<Buffer> {
+    const deps = this.requirePersistenceDeps();
+    const plaintext = this.serializeToJson();
+    return deps.encryptString(plaintext);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Persistence internals
+  // ---------------------------------------------------------------------------
+
+  private requirePersistenceDeps(): SpeakerRegistryPersistenceDeps {
+    if (!this.persistenceDeps) {
+      throw new Error(
+        'SpeakerRegistry: persistence deps not configured. ' +
+          'Pass a SpeakerRegistryPersistenceDeps object to the constructor.',
+      );
+    }
+    return this.persistenceDeps;
+  }
+
+  private persistencePath(deps: SpeakerRegistryPersistenceDeps): string {
+    return path.join(deps.getUserDataPath(), SpeakerRegistry.PERSISTENCE_FILENAME);
+  }
+
+  private serializeToJson(): string {
+    const data: SerializedRegistry = {
+      version: 1,
+      labelCounter: this.labelCounter,
+      speakers: Array.from(this.speakers.values()).map((entry) => ({
+        speakerId: entry.speakerId,
+        speakerLabel: entry.speakerLabel,
+        centroid: Array.from(entry.centroid),
+        totalDuration: entry.totalDuration,
+        segmentCount: entry.segmentCount,
+        createdAt: entry.createdAt,
+      })),
+    };
+    return JSON.stringify(data);
+  }
+
+  private deserializeFromJson(json: string): void {
+    const data = JSON.parse(json) as SerializedRegistry;
+    this.speakers.clear();
+    for (const entry of data.speakers) {
+      this.speakers.set(entry.speakerId, {
+        speakerId: entry.speakerId,
+        speakerLabel: entry.speakerLabel,
+        centroid: new Float32Array(entry.centroid),
+        totalDuration: entry.totalDuration,
+        segmentCount: entry.segmentCount,
+        createdAt: entry.createdAt,
+      });
+    }
+    this.labelCounter = data.labelCounter;
   }
 }

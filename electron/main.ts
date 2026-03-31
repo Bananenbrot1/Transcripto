@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog, globalShortcut, safeStorage } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as modelManager from './services/model-manager.js';
@@ -10,11 +10,19 @@ import * as diarizationService from './services/diarization-service.js';
 import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
 import * as summaryService from './services/summary-service.js';
+import { SpeakerRegistry } from './services/speaker-registry.js';
+import type { SpeakerRegistryPersistenceDeps } from './services/speaker-registry.js';
 import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
 
 let activeEngine: ModelEngine | null = null;
+
+// SpeakerRegistry is created at module scope without persistence deps so that
+// IPC handlers can reference it before app.whenReady(). Persistence deps are
+// configured inside app.whenReady() to avoid Electron bug #45328 (safeStorage
+// is not available before the app is ready).
+export const speakerRegistry = new SpeakerRegistry();
 
 const isDev = !app.isPackaged;
 
@@ -303,7 +311,24 @@ function createWindow(): void {
 
 registerIpcHandlers();
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Configure SpeakerRegistry persistence deps now that safeStorage is
+  // available (Electron bug #45328: safeStorage must not be used before
+  // app.whenReady() resolves).
+  const persistenceDeps: SpeakerRegistryPersistenceDeps = {
+    encryptString: (plaintext) => safeStorage.encryptString(plaintext),
+    decryptString: (encrypted) => safeStorage.decryptString(encrypted),
+    getUserDataPath: () => app.getPath('userData'),
+    writeFile: (filePath, data) => fs.writeFileSync(filePath, data),
+    readFile: (filePath) => fs.readFileSync(filePath),
+    fileExists: (filePath) => fs.existsSync(filePath),
+    deleteFile: (filePath) => fs.unlinkSync(filePath),
+  };
+  speakerRegistry.setPersistenceDeps(persistenceDeps);
+  await speakerRegistry.loadPersistedSpeakers().catch((err) => {
+    console.error('[main] Failed to load persisted speaker registry:', err);
+  });
+
   createWindow();
 
   app.on('activate', () => {
