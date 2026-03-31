@@ -21,6 +21,7 @@ import type {
   LiveSummarizeRequest,
   SpeakerAssignment,
   SpeakerProfile,
+  SegmentSpeakerUpdate,
 } from '../shared/types';
 
 export type {
@@ -39,6 +40,7 @@ export type {
   LiveSummarizeRequest,
   SpeakerAssignment,
   SpeakerProfile,
+  SegmentSpeakerUpdate,
 };
 
 /** All methods exposed on window.electronAPI via contextBridge. */
@@ -134,4 +136,27 @@ export interface ElectronAPI {
    * Returns an unsubscribe function.
    */
   onSpeakerRegistryChanged: (callback: (speakers: SpeakerProfile[]) => void) => () => void;
+
+  // ---------------------------------------------------------------------------
+  // Per-segment speaker reassignment
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reassigns the speaker for a specific transcript segment.
+   *
+   * The main process:
+   *   1. Updates the segment's entry in the session transcript store.
+   *   2. Calls mergeSpeakers(oldSpeakerId, newSpeakerId) if the segment had a
+   *      different speaker assigned, persisting the embedding merge.
+   *   3. Persists the registry.
+   *   4. Broadcasts onSegmentSpeakerUpdated to all renderer windows.
+   */
+  reassignSegmentSpeaker: (segmentId: string, newSpeakerId: string) => Promise<void>;
+
+  /**
+   * Subscribe to segment speaker update push events.
+   * Fires after a successful reassignSegmentSpeaker call.
+   * Returns an unsubscribe function.
+   */
+  onSegmentSpeakerUpdated: (callback: (update: SegmentSpeakerUpdate) => void) => () => void;
 }

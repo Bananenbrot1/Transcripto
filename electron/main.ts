@@ -13,7 +13,7 @@ import * as summaryService from './services/summary-service.js';
 import { SpeakerRegistry } from './services/speaker-registry.js';
 import type { SpeakerRegistryPersistenceDeps } from './services/speaker-registry.js';
 import { EmbeddingWorkerClient } from './services/embedding-worker-client.js';
-import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine, SpeakerAssignment, SpeakerProfile } from '../shared/types.js';
+import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine, SpeakerAssignment, SpeakerProfile, SegmentSpeakerUpdate } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
 
@@ -29,6 +29,12 @@ export const speakerRegistry = new SpeakerRegistry();
 // It is spawned when recording starts (open-audio-recording) and terminated
 // when recording stops (close-audio-recording).
 export const embeddingWorkerClient = new EmbeddingWorkerClient();
+
+// In-memory session transcript store: maps segmentId -> current speaker
+// assignment. Populated by the request-embedding handler when speaker
+// assignments are resolved, and updated by reassign-segment-speaker.
+// Cleared when a new recording session begins (open-audio-recording).
+export const sessionSegmentSpeakers = new Map<string, { speakerId: string; speakerLabel: string }>();
 
 const isDev = !app.isPackaged;
 
@@ -188,6 +194,8 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('open-audio-recording', () => {
+    // Clear any stale session speaker assignments from the previous recording.
+    sessionSegmentSpeakers.clear();
     audioFileService.openRecording();
     // Spawn the embedding worker if the selected model is already downloaded.
     // If the model is absent, the worker simply won't run; the pipeline falls
@@ -250,6 +258,11 @@ function registerIpcHandlers(): void {
             confidence,
             source,
           }));
+          // Record the current speaker for each segment so reassignSegmentSpeaker
+          // can look up the old speakerId when a manual correction arrives.
+          for (const segmentId of segmentIds) {
+            sessionSegmentSpeakers.set(segmentId, { speakerId, speakerLabel });
+          }
           // Push the result back to the renderer that initiated the request.
           event.sender.send('speaker-assigned', assignments);
           // Persist the updated registry asynchronously after each new match/create.
@@ -413,6 +426,58 @@ function registerIpcHandlers(): void {
     // deletePersistedSpeakers clears the in-memory map; broadcast manually since
     // no granular event is emitted for a full clear.
     broadcastSpeakerRegistryChanged();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Per-segment speaker reassignment
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle('reassign-segment-speaker', async (_event, segmentId: string, newSpeakerId: string) => {
+    // Resolve the target speaker — must exist in the registry.
+    const newSpeaker = speakerRegistry.getSpeaker(newSpeakerId);
+    if (!newSpeaker) {
+      throw new Error(`reassign-segment-speaker: speaker "${newSpeakerId}" not found in registry`);
+    }
+
+    // Look up the previously assigned speaker for this segment.
+    const oldEntry = sessionSegmentSpeakers.get(segmentId);
+    const oldSpeakerId = oldEntry?.speakerId;
+
+    // Update the session store to reflect the new assignment.
+    sessionSegmentSpeakers.set(segmentId, {
+      speakerId: newSpeakerId,
+      speakerLabel: newSpeaker.speakerLabel,
+    });
+
+    // When the old speaker differs from the new one, the reassignment implies
+    // the two registry entries represent the same person. Merge the old
+    // speaker's embeddings into the new one so future identifications benefit
+    // from the correction. The old entry is removed by mergeSpeakers.
+    if (oldSpeakerId && oldSpeakerId !== newSpeakerId) {
+      try {
+        speakerRegistry.mergeSpeakers(oldSpeakerId, newSpeakerId);
+      } catch (err) {
+        // The old speaker may have already been merged or deleted; this is
+        // non-fatal — log and continue so the segment update still propagates.
+        console.warn('[main] reassign-segment-speaker: mergeSpeakers error (non-fatal):', err);
+      }
+    }
+
+    // Persist the (possibly merged) registry.
+    await speakerRegistry.persistSpeakers().catch((err: unknown) => {
+      console.error('[main] reassign-segment-speaker: failed to persist registry:', err);
+    });
+
+    // Broadcast the update to all renderer windows so every transcript panel
+    // instance re-renders the corrected segment.
+    const update: SegmentSpeakerUpdate = {
+      segmentId,
+      speakerId: newSpeakerId,
+      speakerLabel: newSpeaker.speakerLabel,
+    };
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('segment-speaker-updated', update);
+    }
   });
 }
 

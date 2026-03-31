@@ -6,9 +6,9 @@
  * first — both preload.ts (main-process build) and this file (renderer build)
  * will pick up the change.
  */
-import type { ElectronAPI, DiarizationDownloadProgress, MediaPermissions, SpeakerAssignment, SpeakerProfile } from '../../electron/ipc-types';
+import type { ElectronAPI, DiarizationDownloadProgress, MediaPermissions, SpeakerAssignment, SpeakerProfile, SegmentSpeakerUpdate } from '../../electron/ipc-types';
 
-export type { DiarizationDownloadProgress, MediaPermissions, SpeakerAssignment, SpeakerProfile };
+export type { DiarizationDownloadProgress, MediaPermissions, SpeakerAssignment, SpeakerProfile, SegmentSpeakerUpdate };
 
 declare global {
   interface Window {

@@ -170,6 +170,19 @@ export interface SpeakerAssignment {
   source: 'mic' | 'system';
 }
 
+/**
+ * Payload broadcast to all renderer windows after a segment's speaker
+ * has been reassigned via the reassign-segment-speaker IPC channel.
+ */
+export interface SegmentSpeakerUpdate {
+  /** The TranscriptSegment id whose speaker was changed. */
+  segmentId: string;
+  /** New stable registry identifier for the speaker. */
+  speakerId: string;
+  /** Human-readable label for the speaker after the reassignment. */
+  speakerLabel: string;
+}
+
 export interface LiveSummarizeRequest {
   previousSummary: string;
   corrections: string[];

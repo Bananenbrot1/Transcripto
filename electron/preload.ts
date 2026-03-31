@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest, SpeakerAssignment, SpeakerProfile } from './ipc-types';
+import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest, SpeakerAssignment, SpeakerProfile, SegmentSpeakerUpdate } from './ipc-types';
 
 // Typed against ElectronAPI so the compiler verifies method presence and signatures.
 const api: ElectronAPI = {
@@ -122,6 +122,16 @@ const api: ElectronAPI = {
       callback(speakers);
     ipcRenderer.on('speaker-registry-changed', handler);
     return () => ipcRenderer.removeListener('speaker-registry-changed', handler);
+  },
+
+  reassignSegmentSpeaker: (segmentId: string, newSpeakerId: string) =>
+    ipcRenderer.invoke('reassign-segment-speaker', segmentId, newSpeakerId),
+
+  onSegmentSpeakerUpdated: (callback: (update: SegmentSpeakerUpdate) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, update: SegmentSpeakerUpdate) =>
+      callback(update);
+    ipcRenderer.on('segment-speaker-updated', handler);
+    return () => ipcRenderer.removeListener('segment-speaker-updated', handler);
   },
 };
 
