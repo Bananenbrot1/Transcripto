@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog, globalShortcut, safeStorage } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as modelManager from './services/model-manager.js';
@@ -10,13 +10,69 @@ import * as diarizationService from './services/diarization-service.js';
 import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
 import * as summaryService from './services/summary-service.js';
-import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine } from '../shared/types.js';
+import { SpeakerRegistry } from './services/speaker-registry.js';
+import type { SpeakerRegistryPersistenceDeps } from './services/speaker-registry.js';
+import { EmbeddingWorkerClient } from './services/embedding-worker-client.js';
+import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine, SpeakerAssignment, SpeakerProfile, SegmentSpeakerUpdate } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
 
 let activeEngine: ModelEngine | null = null;
 
+// SpeakerRegistry is created at module scope without persistence deps so that
+// IPC handlers can reference it before app.whenReady(). Persistence deps are
+// configured inside app.whenReady() to avoid Electron bug #45328 (safeStorage
+// is not available before the app is ready).
+export const speakerRegistry = new SpeakerRegistry();
+
+// EmbeddingWorkerClient manages the speaker-embedding worker thread lifecycle.
+// It is spawned when recording starts (open-audio-recording) and terminated
+// when recording stops (close-audio-recording).
+export const embeddingWorkerClient = new EmbeddingWorkerClient();
+
+// In-memory session transcript store: maps segmentId -> current speaker
+// assignment. Populated by the request-embedding handler when speaker
+// assignments are resolved, and updated by reassign-segment-speaker.
+// Cleared when a new recording session begins (open-audio-recording).
+export const sessionSegmentSpeakers = new Map<string, { speakerId: string; speakerLabel: string }>();
+
 const isDev = !app.isPackaged;
+
+// ---------------------------------------------------------------------------
+// Speaker registry helpers
+// ---------------------------------------------------------------------------
+
+/** Maps SpeakerEntry[] to the IPC-safe SpeakerProfile shape (no Float32Array). */
+function toSpeakerProfiles(entries: readonly { speakerId: string; speakerLabel: string; createdAt: number; segmentCount: number }[]): SpeakerProfile[] {
+  return entries.map((e) => ({
+    speakerId: e.speakerId,
+    name: e.speakerLabel,
+    createdAt: e.createdAt,
+    segmentCount: e.segmentCount,
+  }));
+}
+
+/**
+ * Broadcasts the current speaker registry to all open renderer windows.
+ * Called whenever the registry is mutated (enroll, merge, delete, clear).
+ */
+function broadcastSpeakerRegistryChanged(): void {
+  const profiles = toSpeakerProfiles(speakerRegistry.getSpeakers());
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('speaker-registry-changed', profiles);
+  }
+}
+
+/**
+ * Wires SpeakerRegistry event listeners so any mutation automatically
+ * broadcasts the updated speaker list to all renderer windows.
+ * Must be called once after registerIpcHandlers().
+ */
+function registerSpeakerRegistryListeners(): void {
+  speakerRegistry.on('speakerEnrolled', () => broadcastSpeakerRegistryChanged());
+  speakerRegistry.on('speakersMerged', () => broadcastSpeakerRegistryChanged());
+  speakerRegistry.on('speakerDeleted', () => broadcastSpeakerRegistryChanged());
+}
 
 function registerIpcHandlers(): void {
   ipcMain.handle('get-available-models', () => {
@@ -138,20 +194,87 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('open-audio-recording', () => {
+    // Clear any stale session speaker assignments from the previous recording.
+    sessionSegmentSpeakers.clear();
     audioFileService.openRecording();
+    // Spawn the embedding worker if the selected model is already downloaded.
+    // If the model is absent, the worker simply won't run; the pipeline falls
+    // back to source-based labeling ('You' / 'Them') in TASK-008.
+    const modelId = diarizationModelManager.getSelectedEmbeddingModel();
+    if (diarizationModelManager.isEmbeddingModelDownloaded(modelId)) {
+      const modelPath = diarizationModelManager.getEmbeddingModelPathById(modelId);
+      embeddingWorkerClient.start(modelPath, modelId).catch((err: unknown) => {
+        console.error('[main] Failed to start embedding worker:', err);
+      });
+    }
   });
 
   ipcMain.on('write-audio-chunk', (_event, source: 'mic' | 'sys', samples: ArrayBuffer) => {
     audioFileService.appendChunk(source, Buffer.from(samples));
   });
 
-  ipcMain.handle('close-audio-recording', () => {
-    return audioFileService.closeRecording();
+  ipcMain.handle('close-audio-recording', async () => {
+    const result = audioFileService.closeRecording();
+    embeddingWorkerClient.stop().catch((err: unknown) => {
+      console.error('[main] Failed to stop embedding worker:', err);
+    });
+    return result;
   });
 
   ipcMain.handle('cleanup-audio-recording', () => {
     audioFileService.cleanup();
   });
+
+  // Fire-and-forget: the renderer sends the audio buffer and segment IDs after
+  // transcription completes. The main process runs embedding extraction in the
+  // worker thread and sends speaker assignments back via a push event.
+  //
+  // Short segments (<1 s) are filtered by the renderer before sending here;
+  // the main process trusts the caller on this and always forwards to the worker.
+  ipcMain.on(
+    'request-embedding',
+    (event, source: 'mic' | 'system', audioBuffer: ArrayBuffer, segmentIds: string[]) => {
+      if (!embeddingWorkerClient.isRunning) {
+        // Embedding worker not started (model not downloaded or startup failed).
+        // Silently ignore — renderer already applied source-based fallback labels.
+        return;
+      }
+
+      if (!segmentIds || segmentIds.length === 0) return;
+
+      // The audio buffer is Float32 PCM at 16 kHz mono — the same format whisper received.
+      const float32 = new Float32Array(audioBuffer);
+      // Use the first segment ID as the worker correlation key; fan-out to all IDs on result.
+      const primaryId = segmentIds[0];
+
+      embeddingWorkerClient
+        .identify(source, float32, primaryId)
+        .then((embedding) => {
+          const { speakerId, speakerLabel, confidence } = speakerRegistry.matchOrCreate(embedding);
+          const assignments: SpeakerAssignment[] = segmentIds.map((segmentId) => ({
+            segmentId,
+            speakerId,
+            speakerLabel,
+            confidence,
+            source,
+          }));
+          // Record the current speaker for each segment so reassignSegmentSpeaker
+          // can look up the old speakerId when a manual correction arrives.
+          for (const segmentId of segmentIds) {
+            sessionSegmentSpeakers.set(segmentId, { speakerId, speakerLabel });
+          }
+          // Push the result back to the renderer that initiated the request.
+          event.sender.send('speaker-assigned', assignments);
+          // Persist the updated registry asynchronously after each new match/create.
+          speakerRegistry.persistSpeakers().catch((err: unknown) => {
+            console.error('[main] Failed to persist speaker registry:', err);
+          });
+        })
+        .catch((err: unknown) => {
+          console.error('[main] request-embedding: worker identify error:', err);
+        });
+    },
+  );
 
   ipcMain.handle('store-get', (_event, key: string) => {
     return settingsStore.get(key as keyof StoreSchema);
@@ -250,17 +373,110 @@ function registerIpcHandlers(): void {
     }, 1000);
     try {
       const { micPath, sysPath } = audioFileService.getPaths();
-      const raw = await diarizationService.diarizeFromFile(
+      const result = await diarizationService.diarizeFromFileDual(
         micPath,
         sysPath,
         diarizationModelManager.getSegmentationModelPath(),
         diarizationModelManager.getEmbeddingModelPath(),
         numSpeakers,
       );
-      return raw.map((seg) => ({ ...seg }));
+      return result.mergedSegments.map((seg) => ({ ...seg }));
     } finally {
       clearInterval(interval);
       audioFileService.cleanup();
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Speaker registry management channels
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle('get-speakers', () => {
+    return toSpeakerProfiles(speakerRegistry.getSpeakers());
+  });
+
+  ipcMain.handle('enroll-speaker', async (_event, speakerId: string, name: string) => {
+    speakerRegistry.enrollSpeaker(speakerId, name);
+    await speakerRegistry.persistSpeakers().catch((err: unknown) => {
+      console.error('[main] enroll-speaker: failed to persist registry:', err);
+    });
+    // broadcastSpeakerRegistryChanged is triggered via the 'speakerEnrolled' event listener.
+  });
+
+  ipcMain.handle('merge-speakers', async (_event, fromId: string, toId: string) => {
+    speakerRegistry.mergeSpeakers(fromId, toId);
+    await speakerRegistry.persistSpeakers().catch((err: unknown) => {
+      console.error('[main] merge-speakers: failed to persist registry:', err);
+    });
+    // broadcastSpeakerRegistryChanged is triggered via the 'speakersMerged' event listener.
+  });
+
+  ipcMain.handle('delete-speaker', async (_event, speakerId: string) => {
+    speakerRegistry.deleteSpeaker(speakerId);
+    await speakerRegistry.persistSpeakers().catch((err: unknown) => {
+      console.error('[main] delete-speaker: failed to persist registry:', err);
+    });
+    // broadcastSpeakerRegistryChanged is triggered via the 'speakerDeleted' event listener.
+  });
+
+  ipcMain.handle('delete-all-speakers', async () => {
+    await speakerRegistry.deletePersistedSpeakers().catch((err: unknown) => {
+      console.error('[main] delete-all-speakers: failed to delete persisted registry:', err);
+    });
+    // deletePersistedSpeakers clears the in-memory map; broadcast manually since
+    // no granular event is emitted for a full clear.
+    broadcastSpeakerRegistryChanged();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Per-segment speaker reassignment
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle('reassign-segment-speaker', async (_event, segmentId: string, newSpeakerId: string) => {
+    // Resolve the target speaker — must exist in the registry.
+    const newSpeaker = speakerRegistry.getSpeaker(newSpeakerId);
+    if (!newSpeaker) {
+      throw new Error(`reassign-segment-speaker: speaker "${newSpeakerId}" not found in registry`);
+    }
+
+    // Look up the previously assigned speaker for this segment.
+    const oldEntry = sessionSegmentSpeakers.get(segmentId);
+    const oldSpeakerId = oldEntry?.speakerId;
+
+    // Update the session store to reflect the new assignment.
+    sessionSegmentSpeakers.set(segmentId, {
+      speakerId: newSpeakerId,
+      speakerLabel: newSpeaker.speakerLabel,
+    });
+
+    // When the old speaker differs from the new one, the reassignment implies
+    // the two registry entries represent the same person. Merge the old
+    // speaker's embeddings into the new one so future identifications benefit
+    // from the correction. The old entry is removed by mergeSpeakers.
+    if (oldSpeakerId && oldSpeakerId !== newSpeakerId) {
+      try {
+        speakerRegistry.mergeSpeakers(oldSpeakerId, newSpeakerId);
+      } catch (err) {
+        // The old speaker may have already been merged or deleted; this is
+        // non-fatal — log and continue so the segment update still propagates.
+        console.warn('[main] reassign-segment-speaker: mergeSpeakers error (non-fatal):', err);
+      }
+    }
+
+    // Persist the (possibly merged) registry.
+    await speakerRegistry.persistSpeakers().catch((err: unknown) => {
+      console.error('[main] reassign-segment-speaker: failed to persist registry:', err);
+    });
+
+    // Broadcast the update to all renderer windows so every transcript panel
+    // instance re-renders the corrected segment.
+    const update: SegmentSpeakerUpdate = {
+      segmentId,
+      speakerId: newSpeakerId,
+      speakerLabel: newSpeaker.speakerLabel,
+    };
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('segment-speaker-updated', update);
     }
   });
 }
@@ -302,8 +518,26 @@ function createWindow(): void {
 }
 
 registerIpcHandlers();
+registerSpeakerRegistryListeners();
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Configure SpeakerRegistry persistence deps now that safeStorage is
+  // available (Electron bug #45328: safeStorage must not be used before
+  // app.whenReady() resolves).
+  const persistenceDeps: SpeakerRegistryPersistenceDeps = {
+    encryptString: (plaintext) => safeStorage.encryptString(plaintext),
+    decryptString: (encrypted) => safeStorage.decryptString(encrypted),
+    getUserDataPath: () => app.getPath('userData'),
+    writeFile: (filePath, data) => fs.writeFileSync(filePath, data),
+    readFile: (filePath) => fs.readFileSync(filePath),
+    fileExists: (filePath) => fs.existsSync(filePath),
+    deleteFile: (filePath) => fs.unlinkSync(filePath),
+  };
+  speakerRegistry.setPersistenceDeps(persistenceDeps);
+  await speakerRegistry.loadPersistedSpeakers().catch((err) => {
+    console.error('[main] Failed to load persisted speaker registry:', err);
+  });
+
   createWindow();
 
   app.on('activate', () => {

@@ -1,4 +1,67 @@
 declare module 'sherpa-onnx-node' {
+  // --- Online Stream (shared by SpeakerEmbeddingExtractor and OnlineRecognizer) ---
+
+  export class OnlineStream {
+    acceptWaveform(config: { sampleRate: number; samples: Float32Array }): void;
+  }
+
+  // --- Speaker Embedding ---
+
+  export interface SpeakerEmbeddingExtractorConfig {
+    model: string;
+    numThreads?: number;
+    /** Accept boolean or numeric (0/1) for compatibility with the native addon. */
+    debug?: boolean | number;
+    provider?: string;
+  }
+
+  /**
+   * Extracts fixed-dimension speaker embeddings from streaming audio.
+   *
+   * Typical usage:
+   *   const extractor = new SpeakerEmbeddingExtractor({ model: '/path/to/model.onnx' });
+   *   const stream = extractor.createStream();
+   *   stream.acceptWaveform({ sampleRate: 16000, samples });
+   *   const embedding = extractor.compute(stream);  // Float32Array of length extractor.dim
+   */
+  export class SpeakerEmbeddingExtractor {
+    constructor(config: SpeakerEmbeddingExtractorConfig);
+    /** Dimensionality of the produced embedding vector (e.g. 192 for CAM++). */
+    readonly dim: number;
+    createStream(): OnlineStream;
+    isReady(stream: OnlineStream): boolean;
+    compute(stream: OnlineStream, enableExternalBuffer?: boolean): Float32Array;
+  }
+
+  export interface SpeakerEmbeddingEntry {
+    name: string;
+    v: Float32Array;
+  }
+
+  export interface SpeakerEmbeddingManagerSearchObj {
+    v: Float32Array;
+    threshold: number;
+  }
+
+  export interface SpeakerEmbeddingManagerVerifyObj {
+    name: string;
+    v: Float32Array;
+    threshold: number;
+  }
+
+  export class SpeakerEmbeddingManager {
+    constructor(dim: number);
+    readonly dim: number;
+    add(obj: SpeakerEmbeddingEntry): boolean;
+    addMulti(obj: { name: string; v: Float32Array[] }): boolean;
+    remove(name: string): boolean;
+    search(obj: SpeakerEmbeddingManagerSearchObj): string;
+    verify(obj: SpeakerEmbeddingManagerVerifyObj): boolean;
+    contains(name: string): boolean;
+    getNumSpeakers(): number;
+    getAllSpeakerNames(): string[];
+  }
+
   // --- Speaker Diarization ---
 
   export interface DiarizationResult {

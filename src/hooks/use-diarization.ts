@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
 import type { TranscriptSegment } from '@/types/transcription';
+import { alignSegmentsToDiarization } from '@/lib/diarization-alignment';
 
 export type DiarizationState = 'idle' | 'models-missing' | 'available' | 'processing' | 'done' | 'error';
 
@@ -35,12 +36,7 @@ export function useDiarization(
 
       const recStart = recordingStartTimeRef.current;
       setSegments((prev) =>
-        prev.map((seg) => {
-          const relSec = (seg.speechStartMs - recStart) / 1000;
-          const match = diarSegments.find((d) => relSec >= d.start && relSec <= d.end);
-          if (!match) return seg;
-          return { ...seg, speaker: match.speaker, speakerId: match.speaker };
-        }),
+        alignSegmentsToDiarization(prev, diarSegments, recStart),
       );
 
       setDiarizationState('done');

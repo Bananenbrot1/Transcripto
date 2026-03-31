@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest } from './ipc-types';
+import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest, SpeakerAssignment, SpeakerProfile, SegmentSpeakerUpdate } from './ipc-types';
 
 // Typed against ElectronAPI so the compiler verifies method presence and signatures.
 const api: ElectronAPI = {
@@ -93,6 +93,46 @@ const api: ElectronAPI = {
   },
 
   selectAudioFile: () => ipcRenderer.invoke('select-audio-file'),
+
+  requestEmbedding: (source: 'mic' | 'system', audioBuffer: ArrayBuffer, segmentIds: string[]) =>
+    ipcRenderer.send('request-embedding', source, audioBuffer, segmentIds),
+
+  onSpeakerAssigned: (callback: (assignments: SpeakerAssignment[]) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, assignments: SpeakerAssignment[]) =>
+      callback(assignments);
+    ipcRenderer.on('speaker-assigned', handler);
+    return () => ipcRenderer.removeListener('speaker-assigned', handler);
+  },
+
+  getSpeakers: () => ipcRenderer.invoke('get-speakers'),
+
+  enrollSpeaker: (speakerId: string, name: string) =>
+    ipcRenderer.invoke('enroll-speaker', speakerId, name),
+
+  mergeSpeakers: (fromId: string, toId: string) =>
+    ipcRenderer.invoke('merge-speakers', fromId, toId),
+
+  deleteSpeaker: (speakerId: string) =>
+    ipcRenderer.invoke('delete-speaker', speakerId),
+
+  deleteAllSpeakers: () => ipcRenderer.invoke('delete-all-speakers'),
+
+  onSpeakerRegistryChanged: (callback: (speakers: SpeakerProfile[]) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, speakers: SpeakerProfile[]) =>
+      callback(speakers);
+    ipcRenderer.on('speaker-registry-changed', handler);
+    return () => ipcRenderer.removeListener('speaker-registry-changed', handler);
+  },
+
+  reassignSegmentSpeaker: (segmentId: string, newSpeakerId: string) =>
+    ipcRenderer.invoke('reassign-segment-speaker', segmentId, newSpeakerId),
+
+  onSegmentSpeakerUpdated: (callback: (update: SegmentSpeakerUpdate) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, update: SegmentSpeakerUpdate) =>
+      callback(update);
+    ipcRenderer.on('segment-speaker-updated', handler);
+    return () => ipcRenderer.removeListener('segment-speaker-updated', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

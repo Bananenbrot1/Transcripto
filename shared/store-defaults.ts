@@ -3,6 +3,7 @@ import type { StoreSchema } from './types.js';
 export const STORE_DEFAULTS: StoreSchema = {
   model: 'large-v3-turbo-q5',
   language: 'auto',
+  speakerEmbeddingModel: 'cam++',
   onboardingComplete: false,
   darkMode: null,
   export: {

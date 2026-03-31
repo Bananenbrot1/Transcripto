@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAudioCapture } from './use-audio-capture';
 import { useSessionPersistence, loadSession, clearSession } from './use-session-persistence';
 import { useDiarization } from './use-diarization';
@@ -31,22 +31,49 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
   const recordingStartTimeRef = useRef(0);
   languageRef.current = language;
 
+  // Tracks the most recently embedding-assigned speaker per source so that short
+  // segments (<1 s) can inherit the identity instead of being embedded separately.
+  const lastSpeakerBySourceRef = useRef<{
+    mic?: { speakerId: string; speakerLabel: string };
+    system?: { speakerId: string; speakerLabel: string };
+  }>({});
+
   const onSpeechEnd = useCallback(
     async (source: 'mic' | 'system', audioBuffer: ArrayBuffer, speechStartMs: number) => {
       const timestamp = Date.now();
       pendingRef.current++;
       console.log(`[transcription] onSpeechEnd: source=${source}, byteLength=${audioBuffer.byteLength}, pending=${pendingRef.current}`);
 
+      // Segments shorter than 1 s produce unreliable embeddings. Skip the
+      // worker call and inherit the most recently assigned speaker instead.
+      // Audio is Float32 PCM at 16 kHz → 4 bytes/sample → samples = byteLength/4.
+      const durationSecs = audioBuffer.byteLength / 4 / 16_000;
+      const isShort = durationSecs < 1.0;
+
       try {
         const result = await window.electronAPI.transcribe(source, audioBuffer, languageRef.current);
         console.log(`[transcription] IPC result: source=${source}, text="${result.text.slice(0, 80)}", segments=${result.segments.length}`);
 
         if (result.text) {
+          // Read the inherited speaker AFTER transcription so we get the most
+          // up-to-date value in case another segment's embedding resolved while
+          // we were waiting for the transcribe call.
+          const inheritedSpeaker = lastSpeakerBySourceRef.current[source];
+
+          const newSegmentIds: string[] = [];
+
           if (source === 'mic') {
+            const segId = `seg-${++segmentCounterRef.current}`;
+            newSegmentIds.push(segId);
+            // For short segments inherit the last assigned speaker; otherwise
+            // default to 'You' until the embedding pipeline resolves.
+            const speaker = isShort && inheritedSpeaker ? inheritedSpeaker.speakerLabel : 'You';
+            const speakerId = isShort && inheritedSpeaker ? inheritedSpeaker.speakerId : undefined;
             const newSegment: TranscriptSegment = {
-              id: `seg-${++segmentCounterRef.current}`,
+              id: segId,
               source,
-              speaker: 'You',
+              speaker,
+              speakerId,
               text: result.text,
               timestamp,
               speechStartMs,
@@ -65,10 +92,17 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
 
               if (seg.speakerTurn) {
                 // Emit accumulated segment for current speaker
+                const segId = `seg-${++segmentCounterRef.current}`;
+                newSegmentIds.push(segId);
+                const speaker = isShort && inheritedSpeaker
+                  ? inheritedSpeaker.speakerLabel
+                  : `Speaker ${systemSpeakerRef.current}`;
+                const speakerId = isShort && inheritedSpeaker ? inheritedSpeaker.speakerId : undefined;
                 newSegments.push({
-                  id: `seg-${++segmentCounterRef.current}`,
+                  id: segId,
                   source,
-                  speaker: `Speaker ${systemSpeakerRef.current}`,
+                  speaker,
+                  speakerId,
                   text: currentTexts.join(' ').trim(),
                   timestamp,
                   speechStartMs,
@@ -87,10 +121,17 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
               const joinedText = currentTexts.join(' ').trim();
               if (joinedText) {
                 const lastSeg = result.segments[result.segments.length - 1];
+                const segId = `seg-${++segmentCounterRef.current}`;
+                newSegmentIds.push(segId);
+                const speaker = isShort && inheritedSpeaker
+                  ? inheritedSpeaker.speakerLabel
+                  : `Speaker ${systemSpeakerRef.current}`;
+                const speakerId = isShort && inheritedSpeaker ? inheritedSpeaker.speakerId : undefined;
                 newSegments.push({
-                  id: `seg-${++segmentCounterRef.current}`,
+                  id: segId,
                   source,
-                  speaker: `Speaker ${systemSpeakerRef.current}`,
+                  speaker,
+                  speakerId,
                   text: joinedText,
                   timestamp,
                   speechStartMs,
@@ -103,6 +144,12 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
             if (newSegments.length > 0) {
               setSegments((prev) => [...prev, ...newSegments]);
             }
+          }
+
+          // Request speaker embedding extraction for segments that are long enough.
+          // Short segments are skipped — their speaker label was already set above.
+          if (!isShort && newSegmentIds.length > 0) {
+            window.electronAPI.requestEmbedding(source, audioBuffer, newSegmentIds);
           }
         }
       } catch (err) {
@@ -204,6 +251,31 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
   }, []);
 
   useSessionPersistence(segments, speakerNames, recordingStartTime, recordingState !== 'idle');
+
+  // Subscribe to speaker assignment push events from the main process.
+  // When the embedding worker resolves a speaker identity, update the matching
+  // segments in state and remember the last known speaker per source so that
+  // subsequent short segments can inherit the identity.
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onSpeakerAssigned((assignments) => {
+      // Update last-speaker tracking first (ref is always current — safe outside setState).
+      for (const a of assignments) {
+        lastSpeakerBySourceRef.current[a.source] = {
+          speakerId: a.speakerId,
+          speakerLabel: a.speakerLabel,
+        };
+      }
+      // Apply speaker identity to the matching segments.
+      setSegments((prev) =>
+        prev.map((seg) => {
+          const match = assignments.find((a) => a.segmentId === seg.id);
+          if (!match) return seg;
+          return { ...seg, speaker: match.speakerLabel, speakerId: match.speakerId };
+        }),
+      );
+    });
+    return unsubscribe;
+  }, []);
 
   return {
     segments,

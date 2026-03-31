@@ -26,6 +26,27 @@ export interface DiarizationSegment {
   end: number;       // seconds from recording start
 }
 
+/**
+ * A diarization segment enriched with source and cross-stream reconciliation
+ * metadata. Produced by CrossStreamReconciler.mergeStreamResults.
+ */
+export interface MergedSegment extends DiarizationSegment {
+  /** Which audio capture stream this segment originated from. */
+  source: 'mic' | 'system';
+  /**
+   * True when this segment has been suppressed as cross-stream echo.
+   * Suppressed segments are retained in the data but hidden in the UI by default.
+   */
+  suppressed: boolean;
+  /** Human-readable reason for suppression; only present when suppressed is true. */
+  reason?: 'cross-stream-echo';
+  /**
+   * True when this segment is flagged as a potential cross-stream match
+   * (similarity between flagThreshold and suppressThreshold).
+   */
+  flagged: boolean;
+}
+
 export type ModelEngine = 'whisper' | 'parakeet';
 
 export interface ModelDefinition {
@@ -70,6 +91,32 @@ export interface DiarizationDownloadProgress extends DownloadProgress {
   phase: 'segmentation' | 'embedding' | 'extracting';
 }
 
+/**
+ * Metadata for a speaker embedding model available for download/selection.
+ */
+export interface EmbeddingModelInfo {
+  /** Canonical model identifier, e.g. 'cam++' or 'eres2netv2'. */
+  id: string;
+  /** Human-readable name displayed in settings UI. */
+  displayName: string;
+  /** Remote URL for downloading the .onnx file. */
+  downloadUrl: string;
+  /** Expected file size in megabytes (used for progress display). */
+  fileSizeMB: number;
+  /** Local file name stored under the diarization models directory. */
+  fileName: string;
+}
+
+/**
+ * Progress event emitted during a per-model embedding download.
+ * Carried on the existing diarization download progress IPC channel.
+ */
+export interface EmbeddingModelDownloadProgress {
+  modelId: string;
+  bytesReceived: number;
+  totalBytes: number;
+}
+
 export interface MediaPermissions {
   mic: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
   screen: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
@@ -89,6 +136,51 @@ export interface FileTranscribeProgress {
   durationProcessedSec: number;
   totalDurationSec: number;
   newSegments: TranscribeSegment[];
+}
+
+/**
+ * IPC-safe view of a registry speaker entry — no Float32Array embeddings.
+ * Returned by the get-speakers channel and pushed via speaker-registry-changed.
+ */
+export interface SpeakerProfile {
+  /** Stable UUID that identifies this speaker across sessions. */
+  speakerId: string;
+  /** Auto-generated label (e.g. 'Speaker A') or enrolled human-readable name. */
+  name: string;
+  /** Unix epoch ms when the entry was first created. */
+  createdAt: number;
+  /** Number of transcript segments attributed to this speaker. */
+  segmentCount: number;
+}
+
+/**
+ * Speaker identity assignment returned from the embedding pipeline.
+ * Sent from the main process to the renderer via the 'speaker-assigned' IPC push event.
+ */
+export interface SpeakerAssignment {
+  /** The TranscriptSegment id this assignment applies to. */
+  segmentId: string;
+  /** Stable registry identifier for the speaker (e.g. a UUID). */
+  speakerId: string;
+  /** Human-readable label (e.g. 'Speaker A' or an enrolled name). */
+  speakerLabel: string;
+  /** Cosine-similarity confidence in [0, 1]. */
+  confidence: number;
+  /** Audio source that produced this segment. */
+  source: 'mic' | 'system';
+}
+
+/**
+ * Payload broadcast to all renderer windows after a segment's speaker
+ * has been reassigned via the reassign-segment-speaker IPC channel.
+ */
+export interface SegmentSpeakerUpdate {
+  /** The TranscriptSegment id whose speaker was changed. */
+  segmentId: string;
+  /** New stable registry identifier for the speaker. */
+  speakerId: string;
+  /** Human-readable label for the speaker after the reassignment. */
+  speakerLabel: string;
 }
 
 export interface LiveSummarizeRequest {
@@ -112,6 +204,7 @@ export interface ShortcutConfig {
 export interface StoreSchema {
   model: string;
   language: string;
+  speakerEmbeddingModel: string;
   onboardingComplete: boolean;
   darkMode: boolean | null; // null = follow system
   export: {
