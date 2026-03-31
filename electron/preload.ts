@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest } from './ipc-types';
+import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest, SpeakerAssignment } from './ipc-types';
 
 // Typed against ElectronAPI so the compiler verifies method presence and signatures.
 const api: ElectronAPI = {
@@ -93,6 +93,16 @@ const api: ElectronAPI = {
   },
 
   selectAudioFile: () => ipcRenderer.invoke('select-audio-file'),
+
+  requestEmbedding: (source: 'mic' | 'system', audioBuffer: ArrayBuffer, segmentIds: string[]) =>
+    ipcRenderer.send('request-embedding', source, audioBuffer, segmentIds),
+
+  onSpeakerAssigned: (callback: (assignments: SpeakerAssignment[]) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, assignments: SpeakerAssignment[]) =>
+      callback(assignments);
+    ipcRenderer.on('speaker-assigned', handler);
+    return () => ipcRenderer.removeListener('speaker-assigned', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

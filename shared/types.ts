@@ -117,6 +117,23 @@ export interface FileTranscribeProgress {
   newSegments: TranscribeSegment[];
 }
 
+/**
+ * Speaker identity assignment returned from the embedding pipeline.
+ * Sent from the main process to the renderer via the 'speaker-assigned' IPC push event.
+ */
+export interface SpeakerAssignment {
+  /** The TranscriptSegment id this assignment applies to. */
+  segmentId: string;
+  /** Stable registry identifier for the speaker (e.g. a UUID). */
+  speakerId: string;
+  /** Human-readable label (e.g. 'Speaker A' or an enrolled name). */
+  speakerLabel: string;
+  /** Cosine-similarity confidence in [0, 1]. */
+  confidence: number;
+  /** Audio source that produced this segment. */
+  source: 'mic' | 'system';
+}
+
 export interface LiveSummarizeRequest {
   previousSummary: string;
   corrections: string[];

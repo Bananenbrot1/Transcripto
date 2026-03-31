@@ -18,6 +18,7 @@ import type {
   SummaryResult,
   FileTranscribeProgress,
   LiveSummarizeRequest,
+  SpeakerAssignment,
 } from '../shared/types';
 
 export type {
@@ -33,6 +34,7 @@ export type {
   SummaryResult,
   FileTranscribeProgress,
   LiveSummarizeRequest,
+  SpeakerAssignment,
 };
 
 /** All methods exposed on window.electronAPI via contextBridge. */
@@ -74,4 +76,19 @@ export interface ElectronAPI {
   transcribeFile: (audioBuffer: ArrayBuffer, language: string, totalDurationSec: number) => Promise<TranscribeResult>;
   onTranscribeFileProgress: (callback: (progress: FileTranscribeProgress) => void) => () => void;
   selectAudioFile: () => Promise<{ fileName: string; data: ArrayBuffer } | null>;
+  /**
+   * Fire-and-forget: ask the main process to run speaker embedding extraction
+   * on the given audio buffer and associate results with the listed segment IDs.
+   * If the embedding worker is not running, the call is silently ignored.
+   *
+   * @param source     Audio source ('mic' or 'system').
+   * @param audioBuffer Float32 PCM at 16 kHz mono (same buffer sent to whisper).
+   * @param segmentIds  One or more segment IDs that should receive the assignment.
+   */
+  requestEmbedding: (source: 'mic' | 'system', audioBuffer: ArrayBuffer, segmentIds: string[]) => void;
+  /**
+   * Subscribe to speaker assignment push events from the main process.
+   * Returns an unsubscribe function.
+   */
+  onSpeakerAssigned: (callback: (assignments: SpeakerAssignment[]) => void) => () => void;
 }

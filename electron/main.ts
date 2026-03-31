@@ -13,7 +13,7 @@ import * as summaryService from './services/summary-service.js';
 import { SpeakerRegistry } from './services/speaker-registry.js';
 import type { SpeakerRegistryPersistenceDeps } from './services/speaker-registry.js';
 import { EmbeddingWorkerClient } from './services/embedding-worker-client.js';
-import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine } from '../shared/types.js';
+import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine, SpeakerAssignment } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
 
@@ -180,6 +180,52 @@ function registerIpcHandlers(): void {
   ipcMain.handle('cleanup-audio-recording', () => {
     audioFileService.cleanup();
   });
+
+  // Fire-and-forget: the renderer sends the audio buffer and segment IDs after
+  // transcription completes. The main process runs embedding extraction in the
+  // worker thread and sends speaker assignments back via a push event.
+  //
+  // Short segments (<1 s) are filtered by the renderer before sending here;
+  // the main process trusts the caller on this and always forwards to the worker.
+  ipcMain.on(
+    'request-embedding',
+    (event, source: 'mic' | 'system', audioBuffer: ArrayBuffer, segmentIds: string[]) => {
+      if (!embeddingWorkerClient.isRunning) {
+        // Embedding worker not started (model not downloaded or startup failed).
+        // Silently ignore — renderer already applied source-based fallback labels.
+        return;
+      }
+
+      if (!segmentIds || segmentIds.length === 0) return;
+
+      // The audio buffer is Float32 PCM at 16 kHz mono — the same format whisper received.
+      const float32 = new Float32Array(audioBuffer);
+      // Use the first segment ID as the worker correlation key; fan-out to all IDs on result.
+      const primaryId = segmentIds[0];
+
+      embeddingWorkerClient
+        .identify(source, float32, primaryId)
+        .then((embedding) => {
+          const { speakerId, speakerLabel, confidence } = speakerRegistry.matchOrCreate(embedding);
+          const assignments: SpeakerAssignment[] = segmentIds.map((segmentId) => ({
+            segmentId,
+            speakerId,
+            speakerLabel,
+            confidence,
+            source,
+          }));
+          // Push the result back to the renderer that initiated the request.
+          event.sender.send('speaker-assigned', assignments);
+          // Persist the updated registry asynchronously after each new match/create.
+          speakerRegistry.persistSpeakers().catch((err: unknown) => {
+            console.error('[main] Failed to persist speaker registry:', err);
+          });
+        })
+        .catch((err: unknown) => {
+          console.error('[main] request-embedding: worker identify error:', err);
+        });
+    },
+  );
 
   ipcMain.handle('store-get', (_event, key: string) => {
     return settingsStore.get(key as keyof StoreSchema);
