@@ -70,6 +70,32 @@ export interface DiarizationDownloadProgress extends DownloadProgress {
   phase: 'segmentation' | 'embedding' | 'extracting';
 }
 
+/**
+ * Metadata for a speaker embedding model available for download/selection.
+ */
+export interface EmbeddingModelInfo {
+  /** Canonical model identifier, e.g. 'cam++' or 'eres2netv2'. */
+  id: string;
+  /** Human-readable name displayed in settings UI. */
+  displayName: string;
+  /** Remote URL for downloading the .onnx file. */
+  downloadUrl: string;
+  /** Expected file size in megabytes (used for progress display). */
+  fileSizeMB: number;
+  /** Local file name stored under the diarization models directory. */
+  fileName: string;
+}
+
+/**
+ * Progress event emitted during a per-model embedding download.
+ * Carried on the existing diarization download progress IPC channel.
+ */
+export interface EmbeddingModelDownloadProgress {
+  modelId: string;
+  bytesReceived: number;
+  totalBytes: number;
+}
+
 export interface MediaPermissions {
   mic: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
   screen: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
@@ -112,6 +138,7 @@ export interface ShortcutConfig {
 export interface StoreSchema {
   model: string;
   language: string;
+  speakerEmbeddingModel: string;
   onboardingComplete: boolean;
   darkMode: boolean | null; // null = follow system
   export: {
