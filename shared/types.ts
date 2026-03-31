@@ -139,6 +139,21 @@ export interface FileTranscribeProgress {
 }
 
 /**
+ * IPC-safe view of a registry speaker entry — no Float32Array embeddings.
+ * Returned by the get-speakers channel and pushed via speaker-registry-changed.
+ */
+export interface SpeakerProfile {
+  /** Stable UUID that identifies this speaker across sessions. */
+  speakerId: string;
+  /** Auto-generated label (e.g. 'Speaker A') or enrolled human-readable name. */
+  name: string;
+  /** Unix epoch ms when the entry was first created. */
+  createdAt: number;
+  /** Number of transcript segments attributed to this speaker. */
+  segmentCount: number;
+}
+
+/**
  * Speaker identity assignment returned from the embedding pipeline.
  * Sent from the main process to the renderer via the 'speaker-assigned' IPC push event.
  */

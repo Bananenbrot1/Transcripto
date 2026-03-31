@@ -292,6 +292,22 @@ export class SpeakerRegistry extends EventEmitter {
     return this.speakers.get(speakerId);
   }
 
+  /**
+   * Removes a single speaker entry from the registry and emits a
+   * 'speakerDeleted' event.
+   *
+   * @throws if `speakerId` is not found in the registry.
+   */
+  deleteSpeaker(speakerId: string): void {
+    if (!this.speakers.has(speakerId)) {
+      throw new Error(
+        `deleteSpeaker: speaker "${speakerId}" not found in registry.`,
+      );
+    }
+    this.speakers.delete(speakerId);
+    this.emit('speakerDeleted', { speakerId });
+  }
+
   /** Clears all speakers and resets the label counter. */
   clear(): void {
     this.speakers.clear();

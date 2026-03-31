@@ -13,7 +13,7 @@ import * as summaryService from './services/summary-service.js';
 import { SpeakerRegistry } from './services/speaker-registry.js';
 import type { SpeakerRegistryPersistenceDeps } from './services/speaker-registry.js';
 import { EmbeddingWorkerClient } from './services/embedding-worker-client.js';
-import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine, SpeakerAssignment } from '../shared/types.js';
+import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine, SpeakerAssignment, SpeakerProfile } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
 
@@ -31,6 +31,42 @@ export const speakerRegistry = new SpeakerRegistry();
 export const embeddingWorkerClient = new EmbeddingWorkerClient();
 
 const isDev = !app.isPackaged;
+
+// ---------------------------------------------------------------------------
+// Speaker registry helpers
+// ---------------------------------------------------------------------------
+
+/** Maps SpeakerEntry[] to the IPC-safe SpeakerProfile shape (no Float32Array). */
+function toSpeakerProfiles(entries: readonly { speakerId: string; speakerLabel: string; createdAt: number; segmentCount: number }[]): SpeakerProfile[] {
+  return entries.map((e) => ({
+    speakerId: e.speakerId,
+    name: e.speakerLabel,
+    createdAt: e.createdAt,
+    segmentCount: e.segmentCount,
+  }));
+}
+
+/**
+ * Broadcasts the current speaker registry to all open renderer windows.
+ * Called whenever the registry is mutated (enroll, merge, delete, clear).
+ */
+function broadcastSpeakerRegistryChanged(): void {
+  const profiles = toSpeakerProfiles(speakerRegistry.getSpeakers());
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('speaker-registry-changed', profiles);
+  }
+}
+
+/**
+ * Wires SpeakerRegistry event listeners so any mutation automatically
+ * broadcasts the updated speaker list to all renderer windows.
+ * Must be called once after registerIpcHandlers().
+ */
+function registerSpeakerRegistryListeners(): void {
+  speakerRegistry.on('speakerEnrolled', () => broadcastSpeakerRegistryChanged());
+  speakerRegistry.on('speakersMerged', () => broadcastSpeakerRegistryChanged());
+  speakerRegistry.on('speakerDeleted', () => broadcastSpeakerRegistryChanged());
+}
 
 function registerIpcHandlers(): void {
   ipcMain.handle('get-available-models', () => {
@@ -337,6 +373,47 @@ function registerIpcHandlers(): void {
       audioFileService.cleanup();
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Speaker registry management channels
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle('get-speakers', () => {
+    return toSpeakerProfiles(speakerRegistry.getSpeakers());
+  });
+
+  ipcMain.handle('enroll-speaker', async (_event, speakerId: string, name: string) => {
+    speakerRegistry.enrollSpeaker(speakerId, name);
+    await speakerRegistry.persistSpeakers().catch((err: unknown) => {
+      console.error('[main] enroll-speaker: failed to persist registry:', err);
+    });
+    // broadcastSpeakerRegistryChanged is triggered via the 'speakerEnrolled' event listener.
+  });
+
+  ipcMain.handle('merge-speakers', async (_event, fromId: string, toId: string) => {
+    speakerRegistry.mergeSpeakers(fromId, toId);
+    await speakerRegistry.persistSpeakers().catch((err: unknown) => {
+      console.error('[main] merge-speakers: failed to persist registry:', err);
+    });
+    // broadcastSpeakerRegistryChanged is triggered via the 'speakersMerged' event listener.
+  });
+
+  ipcMain.handle('delete-speaker', async (_event, speakerId: string) => {
+    speakerRegistry.deleteSpeaker(speakerId);
+    await speakerRegistry.persistSpeakers().catch((err: unknown) => {
+      console.error('[main] delete-speaker: failed to persist registry:', err);
+    });
+    // broadcastSpeakerRegistryChanged is triggered via the 'speakerDeleted' event listener.
+  });
+
+  ipcMain.handle('delete-all-speakers', async () => {
+    await speakerRegistry.deletePersistedSpeakers().catch((err: unknown) => {
+      console.error('[main] delete-all-speakers: failed to delete persisted registry:', err);
+    });
+    // deletePersistedSpeakers clears the in-memory map; broadcast manually since
+    // no granular event is emitted for a full clear.
+    broadcastSpeakerRegistryChanged();
+  });
 }
 
 function createWindow(): void {
@@ -376,6 +453,7 @@ function createWindow(): void {
 }
 
 registerIpcHandlers();
+registerSpeakerRegistryListeners();
 
 app.whenReady().then(async () => {
   // Configure SpeakerRegistry persistence deps now that safeStorage is

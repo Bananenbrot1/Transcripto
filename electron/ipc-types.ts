@@ -20,6 +20,7 @@ import type {
   FileTranscribeProgress,
   LiveSummarizeRequest,
   SpeakerAssignment,
+  SpeakerProfile,
 } from '../shared/types';
 
 export type {
@@ -37,6 +38,7 @@ export type {
   FileTranscribeProgress,
   LiveSummarizeRequest,
   SpeakerAssignment,
+  SpeakerProfile,
 };
 
 /** All methods exposed on window.electronAPI via contextBridge. */
@@ -93,4 +95,43 @@ export interface ElectronAPI {
    * Returns an unsubscribe function.
    */
   onSpeakerAssigned: (callback: (assignments: SpeakerAssignment[]) => void) => () => void;
+
+  // ---------------------------------------------------------------------------
+  // Speaker registry management
+  // ---------------------------------------------------------------------------
+
+  /** Returns all enrolled and auto-created speakers in the registry. */
+  getSpeakers: () => Promise<SpeakerProfile[]>;
+
+  /**
+   * Sets a human-readable name for a speaker, persists the change, and
+   * broadcasts an onSpeakerRegistryChanged event to all renderer windows.
+   */
+  enrollSpeaker: (speakerId: string, name: string) => Promise<void>;
+
+  /**
+   * Merges `fromId` into `toId` using duration-weighted centroid averaging,
+   * persists the result, and broadcasts onSpeakerRegistryChanged.
+   */
+  mergeSpeakers: (fromId: string, toId: string) => Promise<void>;
+
+  /**
+   * Removes a single speaker from the registry, persists the change, and
+   * broadcasts onSpeakerRegistryChanged.
+   */
+  deleteSpeaker: (speakerId: string) => Promise<void>;
+
+  /**
+   * Removes all speakers from the registry and deletes the persisted file.
+   * Broadcasts onSpeakerRegistryChanged.
+   */
+  deleteAllSpeakers: () => Promise<void>;
+
+  /**
+   * Subscribe to speaker registry change push events.
+   * Fires whenever a speaker is enrolled, merged, deleted, or the registry
+   * is cleared. Passes the current full speaker list as the argument.
+   * Returns an unsubscribe function.
+   */
+  onSpeakerRegistryChanged: (callback: (speakers: SpeakerProfile[]) => void) => () => void;
 }
