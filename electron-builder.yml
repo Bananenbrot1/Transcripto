@@ -25,6 +25,7 @@ asarUnpack:
   - "**/*.dylib"
   - "node_modules/sherpa-onnx-darwin-arm64/**"
   - "node_modules/@fugood/node-whisper-darwin-arm64/**"
+  - "node_modules/ffmpeg-static/**"
 
 # macOS target: Apple Silicon (arm64) only
 mac:
