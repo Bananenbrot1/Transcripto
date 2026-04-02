@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import type { TranscriptSegment } from '@/types/transcription';
 import type { FileTranscribeProgress, TranscribeSegment } from '../../shared/types';
 
-export type FileImportState = 'idle' | 'decoding' | 'transcribing' | 'done' | 'error';
+export type FileImportState = 'idle' | 'extracting' | 'decoding' | 'transcribing' | 'done' | 'error';
 
 interface UseFileImportOptions {
   language: string;
@@ -74,17 +74,18 @@ export function useFileImport({ language, onImportStart, onSegmentsBatch, onTitl
       const selected = await window.electronAPI.selectAudioFile();
       if (!selected) return;
 
-      const { fileName, data } = selected;
+      const { fileName, data, isVideo } = selected;
       const titleFromFile = fileName.replace(/\.[^.]+$/, '');
       onTitleReady(titleFromFile);
       onImportStart();
 
-      setFileImportState('decoding');
+      setFileImportState(isVideo ? 'extracting' : 'decoding');
       setErrorMessage('');
       setFileProgress(null);
       segmentCounterRef.current = 0;
 
       // Decode audio using Web Audio API
+      setFileImportState('decoding');
       const audioCtx = new AudioContext();
       let audioBuffer: AudioBuffer;
       try {
