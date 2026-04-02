@@ -4,9 +4,9 @@
 
 **Goal:** Enable transcription of local video files by extracting audio via bundled ffmpeg and feeding it into the existing Whisper/Parakeet transcription pipeline.
 
-**Architecture:** Add a `video-extract-service.ts` in the main process that uses `fluent-ffmpeg` + `ffmpeg-static` to convert video files to 16kHz mono WAV. The existing `select-audio-file` IPC handler is expanded to accept video formats and transparently extracts audio before returning data to the renderer. The renderer gets a new `'extracting'` state in `FileImportState`.
+**Architecture:** Add a `video-extract-service.ts` in the main process that uses `ffmpeg-static` + Node's built-in `child_process.execFile` to convert video files to 16kHz mono WAV. No wrapper library — just spawn the ffmpeg binary directly. The existing `select-audio-file` IPC handler is expanded to accept video formats and transparently extracts audio before returning data to the renderer. The renderer gets a new `'extracting'` state in `FileImportState`.
 
-**Tech Stack:** `ffmpeg-static`, `fluent-ffmpeg`, `@types/fluent-ffmpeg`
+**Tech Stack:** `ffmpeg-static` only (no fluent-ffmpeg — deprecated)
 
 ---
 
@@ -14,7 +14,7 @@
 
 | File | Action | Responsibility |
 |------|--------|----------------|
-| `package.json` | Modify | Add ffmpeg-static, fluent-ffmpeg, @types/fluent-ffmpeg |
+| `package.json` | Modify | Add ffmpeg-static |
 | `electron/services/video-extract-service.ts` | Create | Extract audio from video files via ffmpeg |
 | `electron/services/video-extract-service.test.ts` | Create | Tests for the extraction service |
 | `electron/main.ts` | Modify | Expand file dialog, add video detection + extraction step, cleanup on quit |
@@ -31,12 +31,11 @@
 **Files:**
 - Modify: `package.json`
 
-- [ ] **Step 1: Install ffmpeg-static, fluent-ffmpeg, and types**
+- [ ] **Step 1: Install ffmpeg-static**
 
 ```bash
 cd /Users/maxkirschning/Development/transcripto
-pnpm add ffmpeg-static fluent-ffmpeg
-pnpm add -D @types/fluent-ffmpeg
+pnpm add ffmpeg-static
 ```
 
 - [ ] **Step 2: Verify installation**
@@ -65,7 +64,7 @@ In `package.json`, add `"ffmpeg-static"` to the `pnpm.onlyBuiltDependencies` arr
 
 ```bash
 git add package.json pnpm-lock.yaml
-git commit -m "chore: add ffmpeg-static and fluent-ffmpeg dependencies"
+git commit -m "chore: add ffmpeg-static dependency for video audio extraction"
 ```
 
 ---
@@ -145,14 +144,8 @@ Create `electron/services/video-extract-service.ts`:
 import { app } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import ffmpeg from 'fluent-ffmpeg';
+import { execFile } from 'node:child_process';
 import ffmpegStatic from 'ffmpeg-static';
-
-// Point fluent-ffmpeg at the bundled binary.
-// In packaged builds the binary lives in app.asar.unpacked/node_modules/ffmpeg-static/
-if (ffmpegStatic) {
-  ffmpeg.setFfmpegPath(ffmpegStatic);
-}
 
 export const VIDEO_EXTENSIONS = new Set([
   '.mp4', '.mkv', '.mov', '.avi', '.webm', '.flv', '.wmv',
@@ -171,33 +164,37 @@ export function isVideoFile(filePath: string): boolean {
 
 /**
  * Extract audio from a video file as 16kHz mono WAV.
+ * Spawns the bundled ffmpeg binary directly via child_process.execFile.
  * Returns the path to the temporary WAV file.
  */
 export function extractAudio(videoPath: string): Promise<string> {
+  const ffmpegPath = ffmpegStatic;
+  if (!ffmpegPath) {
+    return Promise.reject(new Error('ffmpeg binary not found'));
+  }
+
   const tempDir = getTempDir();
   fs.mkdirSync(tempDir, { recursive: true });
 
   const outputPath = path.join(tempDir, `extracted-audio-${Date.now()}.wav`);
 
   return new Promise((resolve, reject) => {
-    ffmpeg(videoPath)
-      .noVideo()
-      .audioFrequency(16000)
-      .audioChannels(1)
-      .audioCodec('pcm_s16le')
-      .format('wav')
-      .output(outputPath)
-      .on('error', (err: Error) => {
-        // Check for common "no audio stream" error
-        if (err.message.includes('does not contain any stream') ||
-            err.message.includes('Output file is empty')) {
+    execFile(
+      ffmpegPath,
+      ['-i', videoPath, '-vn', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le', outputPath, '-y'],
+      (_error, _stdout, stderr) => {
+        // ffmpeg exits non-zero even on success sometimes; check output file instead
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+          resolve(outputPath);
+        } else if (stderr.includes('does not contain any stream') ||
+                   stderr.includes('Output file is empty') ||
+                   stderr.includes('Invalid data found')) {
           reject(new Error('No audio track found in video file'));
         } else {
-          reject(new Error(`Failed to extract audio: ${err.message}`));
+          reject(new Error(`Failed to extract audio: ${stderr.slice(-300)}`));
         }
-      })
-      .on('end', () => resolve(outputPath))
-      .run();
+      },
+    );
   });
 }
 
