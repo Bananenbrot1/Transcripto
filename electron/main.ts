@@ -10,6 +10,7 @@ import * as diarizationService from './services/diarization-service.js';
 import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
 import * as summaryService from './services/summary-service.js';
+import * as videoExtractService from './services/video-extract-service.js';
 import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
@@ -231,7 +232,10 @@ function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       filters: [
-        { name: 'Audio Files', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'] },
+        { name: 'Audio & Video Files', extensions: [
+          'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac',
+          'mp4', 'mkv', 'mov', 'avi', 'webm', 'flv', 'wmv',
+        ]},
       ],
     });
     if (result.canceled || result.filePaths.length === 0) {
@@ -239,8 +243,29 @@ function registerIpcHandlers(): void {
     }
     const filePath = result.filePaths[0];
     const fileName = path.basename(filePath);
-    const fileBuffer = fs.readFileSync(filePath);
-    return { fileName, data: fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength) };
+
+    let audioFilePath: string;
+    let needsCleanup = false;
+
+    if (videoExtractService.isVideoFile(filePath)) {
+      audioFilePath = await videoExtractService.extractAudio(filePath);
+      needsCleanup = true;
+    } else {
+      audioFilePath = filePath;
+    }
+
+    try {
+      const fileBuffer = fs.readFileSync(audioFilePath);
+      const data = fileBuffer.buffer.slice(
+        fileBuffer.byteOffset,
+        fileBuffer.byteOffset + fileBuffer.byteLength,
+      );
+      return { fileName, data, isVideo: needsCleanup };
+    } finally {
+      if (needsCleanup) {
+        try { fs.unlinkSync(audioFilePath); } catch {}
+      }
+    }
   });
 
   ipcMain.handle('diarize', async (event, numSpeakers: number = -1) => {
@@ -322,4 +347,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   globalShortcut.unregisterAll();
   audioFileService.cleanup();
+  videoExtractService.cleanupExtractedAudio();
 });
