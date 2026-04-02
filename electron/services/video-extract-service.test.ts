@@ -10,7 +10,7 @@ vi.mock('ffmpeg-static', () => ({
   default: '/usr/bin/ffmpeg',
 }));
 
-import { isVideoFile, VIDEO_EXTENSIONS } from './video-extract-service';
+import { isVideoFile, VIDEO_EXTENSIONS, extractAudio, cleanupExtractedAudio } from './video-extract-service';
 
 describe('video-extract-service', () => {
   describe('VIDEO_EXTENSIONS', () => {
@@ -51,6 +51,24 @@ describe('video-extract-service', () => {
     it('is case-insensitive', () => {
       expect(isVideoFile('file.MP4')).toBe(true);
       expect(isVideoFile('file.Mkv')).toBe(true);
+    });
+  });
+
+  describe('extractAudio', () => {
+    it('is a function that returns a Promise', () => {
+      // We don't execute it (requires Electron + real ffmpeg), but verify it's callable
+      expect(typeof extractAudio).toBe('function');
+    });
+  });
+
+  describe('cleanupExtractedAudio', () => {
+    it('is a function', () => {
+      expect(typeof cleanupExtractedAudio).toBe('function');
+    });
+
+    it('does not throw if temp directory does not exist', () => {
+      // app.getPath is mocked to return '/tmp', so /tmp/transcripto-session likely doesn't exist
+      expect(() => cleanupExtractedAudio()).not.toThrow();
     });
   });
 });

@@ -38,8 +38,8 @@ export function extractAudio(videoPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       ffmpegPath,
-      ['-i', videoPath, '-vn', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le', outputPath, '-y'],
-      (_error, _stdout, stderr) => {
+      ['-loglevel', 'error', '-i', videoPath, '-vn', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le', outputPath, '-y'],
+      (error, _stdout, stderr) => {
         // ffmpeg exits non-zero even on success sometimes; check output file instead
         if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
           resolve(outputPath);
@@ -48,7 +48,8 @@ export function extractAudio(videoPath: string): Promise<string> {
                    stderr.includes('Invalid data found')) {
           reject(new Error('No audio track found in video file'));
         } else {
-          reject(new Error(`Failed to extract audio: ${stderr.slice(-300)}`));
+          const detail = stderr.slice(-300) || error?.message || 'unknown error';
+          reject(new Error(`Failed to extract audio: ${detail}`));
         }
       },
     );
