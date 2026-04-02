@@ -10,3 +10,4 @@ models/
 plans/
 .agents/
 .claude/
+.worktrees/
