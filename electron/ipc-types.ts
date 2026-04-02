@@ -73,5 +73,5 @@ export interface ElectronAPI {
   liveSummarize: (request: LiveSummarizeRequest) => Promise<SummaryResult>;
   transcribeFile: (audioBuffer: ArrayBuffer, language: string, totalDurationSec: number) => Promise<TranscribeResult>;
   onTranscribeFileProgress: (callback: (progress: FileTranscribeProgress) => void) => () => void;
-  selectAudioFile: () => Promise<{ fileName: string; data: ArrayBuffer } | null>;
+  selectAudioFile: () => Promise<{ fileName: string; data: ArrayBuffer; isVideo?: boolean } | null>;
 }
