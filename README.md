@@ -2,22 +2,47 @@
 
 > **Beta** — This project is under active development. Expect rough edges and breaking changes.
 
-A macOS desktop app for real-time speech-to-text transcription using local Whisper models. Everything runs on-device — no cloud services, no API keys, no data leaves your machine.
+A macOS desktop app for real-time speech-to-text transcription using local Whisper or NVIDIA Parakeet models. Everything runs on-device — no data leaves your machine — with optional cloud API integration for AI-powered summaries.
 
-Transcripto captures both microphone and system audio simultaneously, detects speech via a custom Voice Activity Detection (VAD) engine, and transcribes segments locally using [whisper.node](https://github.com/nicholasgasior/whisper.node). Optional speaker diarization is powered by [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
+Transcripto captures both microphone and system audio simultaneously, transcribes live recordings and video files, detects speech via a custom Voice Activity Detection (VAD) engine, and generates real-time AI summaries of your transcripts. The core transcription runs locally using [whisper.node](https://github.com/nicholasgasior/whisper.node) or NVIDIA Parakeet models, with optional speaker diarization powered by [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 
 ## Features
 
-- **Local transcription** — runs Whisper GGML models entirely on-device
-- **Dual audio capture** — records microphone and system audio (Zoom, Teams, etc.) at the same time
-- **Real-time VAD** — custom voice activity detection with configurable sensitivity
-- **Speaker diarization** — optional speaker identification via sherpa-onnx
+### Core Transcription
+- **Local transcription** — runs Whisper or NVIDIA Parakeet GGML models entirely on-device
+- **Dual transcription engine** — choose between Whisper or NVIDIA Parakeet-TDT-0.6B-v3 for transcription
+- **Dual audio capture** — records microphone and system audio (Zoom, Teams, etc.) simultaneously
+- **File transcription** — transcribe audio and video files (MP4, MKV, MOV, AVI, WebM, FLV, WMV, and more) with automatic audio extraction via ffmpeg
+- **Real-time VAD** — custom voice activity detection with configurable sensitivity and silence thresholds
+- **Multi-language** — supports all languages available in Whisper and Parakeet models
+
+### AI & Summarization
+- **Live AI summaries** — real-time transcript summarization during recording (via OpenAI-compatible API)
+- **Summary refinement** — add corrections and notes to improve live summaries in real-time
+- **Post-recording summaries** — generate comprehensive summaries after transcription completes
+- **Customizable summary templates** — control summary format with customizable prompt templates
+
+### Speaker & Audio Processing
+- **Speaker diarization** — optional speaker identification and labeling via sherpa-onnx
+- **Inline transcript editing** — edit and refine individual segments and speaker names on the fly
+- **Audio waveform visualization** — live waveform display during recording for both mic and system audio
+
+### Recording Controls
 - **Pause/resume** — pause and resume recording without losing context
-- **Dark mode** — toggle between light and dark themes
-- **Audio waveform** — live waveform visualization during recording
-- **Markdown export** — save transcripts as Markdown with customizable templates
-- **Model management** — download, switch, and delete Whisper models from the UI
-- **Multi-language** — supports all languages available in Whisper models
+- **Global keyboard shortcuts** — configurable hotkeys for record, pause, and mute operations
+- **Session persistence** — automatically save and restore your transcription sessions and settings
+- **Microphone muting** — mute/unmute microphone without stopping the recording
+
+### Export & Integration
+- **Markdown export** — save transcripts as Markdown with customizable filename and body templates
+- **Template variables** — interpolate timestamp, date, title, transcript, and summary into exports
+- **Token tracking** — monitor token usage for AI-generated summaries
+
+### UI & Customization
+- **Dark mode** — toggle between light and dark themes (follow system preference or manual override)
+- **Settings panels** — configure AI providers, export formats, VAD sensitivity, keyboard shortcuts, and more
+- **Split-panel view** — view transcript and live summary side-by-side during recording
+- **Model management** — download, switch, and delete transcription models from the UI with progress tracking
 
 ## Requirements
 
