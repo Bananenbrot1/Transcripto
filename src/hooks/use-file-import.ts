@@ -74,7 +74,7 @@ export function useFileImport({ language, onImportStart, onSegmentsBatch, onTitl
       const selected = await window.electronAPI.selectAudioFile();
       if (!selected) return;
 
-      const { fileName, data, isVideo } = selected;
+      const { fileName, isVideo } = selected;
       const titleFromFile = fileName.replace(/\.[^.]+$/, '');
       onTitleReady(titleFromFile);
       onImportStart();
@@ -84,12 +84,18 @@ export function useFileImport({ language, onImportStart, onSegmentsBatch, onTitl
       setFileProgress(null);
       segmentCounterRef.current = 0;
 
+      if (isVideo) {
+        // Video path handled by transcribeVideoFile (implemented in a later task).
+        // tempWavPath is available as selected.tempWavPath when isVideo is true.
+        throw new Error('Video file transcription is not yet implemented in this build.');
+      }
+
       // Decode audio using Web Audio API
       setFileImportState('decoding');
       const audioCtx = new AudioContext();
       let audioBuffer: AudioBuffer;
       try {
-        audioBuffer = await audioCtx.decodeAudioData(data.slice(0));
+        audioBuffer = await audioCtx.decodeAudioData(selected.data.slice(0));
       } finally {
         await audioCtx.close();
       }
