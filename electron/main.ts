@@ -244,27 +244,36 @@ function registerIpcHandlers(): void {
     const filePath = result.filePaths[0];
     const fileName = path.basename(filePath);
 
-    let audioFilePath: string;
-    let needsCleanup = false;
-
     if (videoExtractService.isVideoFile(filePath)) {
-      audioFilePath = await videoExtractService.extractAudio(filePath);
-      needsCleanup = true;
-    } else {
-      audioFilePath = filePath;
+      const tempWavPath = await videoExtractService.extractAudio(filePath);
+      return { fileName, tempWavPath, isVideo: true as const };
     }
 
+    const fileBuffer = fs.readFileSync(filePath);
+    const data = fileBuffer.buffer.slice(
+      fileBuffer.byteOffset,
+      fileBuffer.byteOffset + fileBuffer.byteLength,
+    );
+    return { fileName, data, isVideo: false as const };
+  });
+
+  ipcMain.handle('transcribe-video-file', async (event, tempWavPath: string, language: string) => {
+    console.log(`[main] IPC transcribe-video-file: lang=${language}, engine=${activeEngine}, path=${tempWavPath}`);
     try {
-      const fileBuffer = fs.readFileSync(audioFilePath);
-      const data = fileBuffer.buffer.slice(
-        fileBuffer.byteOffset,
-        fileBuffer.byteOffset + fileBuffer.byteLength,
-      );
-      return { fileName, data, isVideo: needsCleanup };
+      const fileBuffer = fs.readFileSync(tempWavPath);
+      const { samples, durationSec } = videoExtractService.wavToFloat32(fileBuffer);
+      console.log(`[main] IPC transcribe-video-file: duration=${durationSec.toFixed(1)}s, samples=${samples.length}`);
+      const service = activeEngine === 'parakeet' ? parakeetService : whisperService;
+      const result = await service.transcribeFile(samples.buffer as ArrayBuffer, language, durationSec, (progress) => {
+        event.sender.send('transcribe-file-progress', progress);
+      });
+      console.log(`[main] IPC transcribe-video-file done: segments=${result.segments.length}`);
+      return result;
+    } catch (err) {
+      console.error('[main] IPC transcribe-video-file error:', err);
+      throw err;
     } finally {
-      if (needsCleanup) {
-        try { fs.unlinkSync(audioFilePath); } catch {}
-      }
+      try { fs.unlinkSync(tempWavPath); } catch {}
     }
   });
 
