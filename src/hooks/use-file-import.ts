@@ -70,7 +70,6 @@ export function useFileImport({ language, onImportStart, onSegmentsBatch, onTitl
 
   const importFile = useCallback(async () => {
     try {
-      // Open native file picker via main process
       const selected = await window.electronAPI.selectAudioFile();
       if (!selected) return;
 
@@ -78,37 +77,10 @@ export function useFileImport({ language, onImportStart, onSegmentsBatch, onTitl
       const titleFromFile = fileName.replace(/\.[^.]+$/, '');
       onTitleReady(titleFromFile);
       onImportStart();
-
-      setFileImportState(isVideo ? 'extracting' : 'decoding');
       setErrorMessage('');
       setFileProgress(null);
       segmentCounterRef.current = 0;
 
-      if (isVideo) {
-        // Video path handled by transcribeVideoFile (implemented in a later task).
-        // tempWavPath is available as selected.tempWavPath when isVideo is true.
-        throw new Error('Video file transcription is not yet implemented in this build.');
-      }
-
-      // Decode audio using Web Audio API
-      setFileImportState('decoding');
-      const audioCtx = new AudioContext();
-      let audioBuffer: AudioBuffer;
-      try {
-        audioBuffer = await audioCtx.decodeAudioData(selected.data.slice(0));
-      } finally {
-        await audioCtx.close();
-      }
-
-      const duration = audioBuffer.duration;
-      setFileDurationSec(duration);
-
-      // Resample to 16kHz mono
-      const pcm16k = resampleTo16kMono(audioBuffer);
-
-      setFileImportState('transcribing');
-
-      // Subscribe to progress events
       const unsubscribe = window.electronAPI.onTranscribeFileProgress((progress) => {
         setFileProgress(progress);
         if (progress.newSegments.length > 0) {
@@ -118,7 +90,27 @@ export function useFileImport({ language, onImportStart, onSegmentsBatch, onTitl
       });
 
       try {
-        await window.electronAPI.transcribeFile(pcm16k.buffer as ArrayBuffer, languageRef.current, duration);
+        if (isVideo) {
+          // Video: audio already extracted to a temp WAV by main process.
+          // Pass only the path — the large buffer never enters renderer memory.
+          setFileImportState('transcribing');
+          await window.electronAPI.transcribeVideoFile(selected.tempWavPath, languageRef.current);
+        } else {
+          // Audio: decode and resample in renderer, then send to main for transcription.
+          setFileImportState('decoding');
+          const audioCtx = new AudioContext();
+          let audioBuffer: AudioBuffer;
+          try {
+            audioBuffer = await audioCtx.decodeAudioData(selected.data.slice(0));
+          } finally {
+            await audioCtx.close();
+          }
+          const duration = audioBuffer.duration;
+          setFileDurationSec(duration);
+          const pcm16k = resampleTo16kMono(audioBuffer);
+          setFileImportState('transcribing');
+          await window.electronAPI.transcribeFile(pcm16k.buffer as ArrayBuffer, languageRef.current, duration);
+        }
       } finally {
         unsubscribe();
       }
