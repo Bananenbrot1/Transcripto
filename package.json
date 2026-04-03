@@ -33,9 +33,10 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "electron",
-      "esbuild",
       "@fugood/whisper.node",
+      "electron",
+      "electron-winstaller",
+      "esbuild",
       "ffmpeg-static"
     ],
     "publicHoistPattern": [
