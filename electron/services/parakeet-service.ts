@@ -191,77 +191,102 @@ export function isMicContextBusy(): boolean {
   return micQueueDepth > 0;
 }
 
+const CHUNK_SAMPLES = 30 * 16000; // 30 seconds at 16kHz
+
 export async function transcribeFile(
   audioBuffer: ArrayBuffer,
   language: string,
   totalDurationSec: number,
   onProgress: (progress: FileTranscribeProgress) => void,
 ): Promise<TranscribeResult> {
-  if (!micWorker) {
-    throw new Error('Parakeet not initialized');
-  }
-  if (micQueueDepth > 0) {
-    throw new Error('Mic worker is busy — cannot transcribe file while recording');
-  }
+  if (!micWorker) throw new Error('Parakeet not initialized');
+  if (micQueueDepth > 0) throw new Error('Mic worker is busy — cannot transcribe file while recording');
 
   micQueueDepth++;
   try {
     const float32 = new Float32Array(audioBuffer);
-    const requestId = nextRequestId++;
+    const totalSamples = float32.length;
+    log(`[parakeet] transcribeFile: ${totalSamples} samples, duration=${totalDurationSec}s`);
 
-    log(`[parakeet] transcribeFile: ${float32.length} samples, duration=${totalDurationSec}s`);
+    const allSegments: TranscribeSegment[] = [];
+    let allText = '';
+    let samplesProcessed = 0;
+    let chunkIndex = 0;
 
-    const result = await new Promise<TranscribeResult>((resolve, reject) => {
-      let settled = false;
+    while (samplesProcessed < totalSamples) {
+      const chunkStart = samplesProcessed;
+      const chunkEnd = Math.min(chunkStart + CHUNK_SAMPLES, totalSamples);
+      const chunk = float32.slice(chunkStart, chunkEnd);
+      const chunkStartSec = chunkStart / 16000;
+      const chunkEndSec = chunkEnd / 16000;
 
-      const timer = setTimeout(() => {
-        if (!settled) {
+      log(`[parakeet] transcribeFile chunk ${chunkIndex}: samples=${chunk.length}, t=${chunkStartSec.toFixed(1)}–${chunkEndSec.toFixed(1)}s`);
+
+      const requestId = nextRequestId++;
+      const chunkResult = await new Promise<{ text: string }>((resolve, reject) => {
+        let settled = false;
+
+        const timer = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            reject(new Error(`[parakeet] chunk ${chunkIndex} timed out after 60s`));
+          }
+        }, 60_000);
+
+        const onMessage = (msg: ParakeetTranscribeResponse | ParakeetErrorResponse | ParakeetReadyMessage) => {
+          if ('id' in msg && msg.id !== requestId) return;
+          if (msg.type !== 'result' && msg.type !== 'error') return;
+          if (settled) return;
           settled = true;
-          reject(new Error('[parakeet] file transcription timed out after 10 minutes'));
-        }
-      }, 600_000);
+          clearTimeout(timer);
+          micWorker!.removeListener('message', onMessage);
+          if (msg.type === 'error') {
+            reject(new Error((msg as ParakeetErrorResponse).message));
+          } else {
+            resolve({ text: (msg as ParakeetTranscribeResponse).text.trim() });
+          }
+        };
 
-      const onMessage = (msg: ParakeetTranscribeResponse | ParakeetErrorResponse | ParakeetReadyMessage) => {
-        if ('id' in msg && msg.id !== requestId) return;
-        if (msg.type !== 'result' && msg.type !== 'error') return;
+        micWorker!.on('message', onMessage);
+        micWorker!.postMessage({
+          type: 'transcribe',
+          id: requestId,
+          samples: chunk,
+          sampleRate: 16000,
+        } as ParakeetTranscribeRequest);
+      });
 
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        micWorker!.removeListener('message', onMessage);
+      samplesProcessed = chunkEnd;
+      chunkIndex++;
 
-        if (msg.type === 'error') {
-          reject(new Error((msg as ParakeetErrorResponse).message));
-        } else {
-          const text = (msg as ParakeetTranscribeResponse).text.trim();
+      if (chunkResult.text) {
+        const segment: TranscribeSegment = {
+          text: chunkResult.text,
+          t0: chunkStartSec,
+          t1: chunkEndSec,
+          speakerTurn: false,
+        };
+        allSegments.push(segment);
+        allText += (allText ? ' ' : '') + chunkResult.text;
+        onProgress({
+          segmentsCompleted: allSegments.length,
+          durationProcessedSec: samplesProcessed / 16000,
+          totalDurationSec,
+          newSegments: [segment],
+        });
+      } else {
+        // Silent chunk — report progress without a new segment
+        onProgress({
+          segmentsCompleted: allSegments.length,
+          durationProcessedSec: samplesProcessed / 16000,
+          totalDurationSec,
+          newSegments: [],
+        });
+      }
+    }
 
-          const segments: TranscribeSegment[] = text
-            ? [{ text, t0: 0, t1: totalDurationSec, speakerTurn: false }]
-            : [];
-
-          // Report final progress
-          onProgress({
-            segmentsCompleted: segments.length,
-            durationProcessedSec: totalDurationSec,
-            totalDurationSec,
-            newSegments: segments,
-          });
-
-          resolve({ text, segments });
-        }
-      };
-
-      micWorker!.on('message', onMessage);
-      micWorker!.postMessage({
-        type: 'transcribe',
-        id: requestId,
-        samples: float32,
-        sampleRate: 16000,
-      } as ParakeetTranscribeRequest);
-    });
-
-    log(`[parakeet] transcribeFile done: segments=${result.segments.length}`);
-    return result;
+    log(`[parakeet] transcribeFile done: ${allSegments.length} segments`);
+    return { text: allText, segments: allSegments };
   } finally {
     micQueueDepth--;
   }
