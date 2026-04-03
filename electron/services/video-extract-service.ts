@@ -74,3 +74,33 @@ export function cleanupExtractedAudio(): void {
     console.warn('[video-extract] cleanup error:', err);
   }
 }
+
+/**
+ * Number of bytes in a standard PCM WAV header produced by ffmpeg.
+ * All extracted WAVs use pcm_s16le with a plain 44-byte RIFF header.
+ */
+export const WAV_HEADER_BYTES = 44;
+
+/**
+ * Convert a 16kHz mono PCM int16 WAV Buffer (from ffmpeg extraction) to a
+ * Float32Array of normalized samples in [-1, 1] plus the duration in seconds.
+ *
+ * The first WAV_HEADER_BYTES bytes are the RIFF header and are skipped.
+ */
+export function wavToFloat32(wavBuffer: Buffer): { samples: Float32Array; durationSec: number } {
+  const sampleBytes = wavBuffer.byteLength - WAV_HEADER_BYTES;
+  if (sampleBytes <= 0) {
+    return { samples: new Float32Array(0), durationSec: 0 };
+  }
+  const numSamples = Math.floor(sampleBytes / 2);
+  const int16 = new Int16Array(
+    wavBuffer.buffer,
+    wavBuffer.byteOffset + WAV_HEADER_BYTES,
+    numSamples,
+  );
+  const samples = new Float32Array(numSamples);
+  for (let i = 0; i < numSamples; i++) {
+    samples[i] = int16[i] / 32768.0;
+  }
+  return { samples, durationSec: numSamples / 16000 };
+}

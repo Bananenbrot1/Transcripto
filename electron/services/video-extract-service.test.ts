@@ -10,7 +10,7 @@ vi.mock('ffmpeg-static', () => ({
   default: '/usr/bin/ffmpeg',
 }));
 
-import { isVideoFile, VIDEO_EXTENSIONS, extractAudio, cleanupExtractedAudio } from './video-extract-service';
+import { isVideoFile, VIDEO_EXTENSIONS, extractAudio, cleanupExtractedAudio, wavToFloat32, WAV_HEADER_BYTES } from './video-extract-service';
 
 describe('video-extract-service', () => {
   describe('VIDEO_EXTENSIONS', () => {
@@ -69,6 +69,42 @@ describe('video-extract-service', () => {
     it('does not throw if temp directory does not exist', () => {
       // app.getPath is mocked to return '/tmp', so /tmp/transcripto-session likely doesn't exist
       expect(() => cleanupExtractedAudio()).not.toThrow();
+    });
+  });
+
+  describe('wavToFloat32', () => {
+    function makeWavBuffer(int16Samples: number[]): Buffer {
+      const header = Buffer.alloc(WAV_HEADER_BYTES, 0);
+      const sampleBuf = Buffer.from(new Int16Array(int16Samples).buffer);
+      return Buffer.concat([header, sampleBuf]);
+    }
+
+    it('converts int16 samples to normalized float32', () => {
+      const wav = makeWavBuffer([0, 32767, -32768, 16384]);
+      const { samples, durationSec } = wavToFloat32(wav);
+
+      expect(samples.length).toBe(4);
+      expect(samples[0]).toBeCloseTo(0.0, 5);
+      expect(samples[1]).toBeCloseTo(32767 / 32768, 4);
+      expect(samples[2]).toBeCloseTo(-1.0, 4);
+      expect(samples[3]).toBeCloseTo(16384 / 32768, 4);
+      expect(durationSec).toBeCloseTo(4 / 16000, 8);
+    });
+
+    it('returns empty samples for a header-only buffer', () => {
+      const headerOnly = Buffer.alloc(WAV_HEADER_BYTES, 0);
+      const { samples, durationSec } = wavToFloat32(headerOnly);
+
+      expect(samples.length).toBe(0);
+      expect(durationSec).toBe(0);
+    });
+
+    it('returns empty samples when buffer is smaller than header', () => {
+      const tooSmall = Buffer.alloc(10, 0);
+      const { samples, durationSec } = wavToFloat32(tooSmall);
+
+      expect(samples.length).toBe(0);
+      expect(durationSec).toBe(0);
     });
   });
 });
