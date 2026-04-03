@@ -191,6 +191,25 @@ export function isMicContextBusy(): boolean {
   return micQueueDepth > 0;
 }
 
+/**
+ * Compute accurate t0/t1 for a chunk segment using token-level timestamps.
+ * timestamps[i] is seconds relative to chunk start.
+ * Falls back to chunk boundaries if timestamps are missing or empty.
+ */
+function chunkSegmentTimes(
+  timestamps: number[] | undefined,
+  chunkStartSec: number,
+  chunkEndSec: number,
+): { t0: number; t1: number } {
+  if (!timestamps || timestamps.length === 0) {
+    return { t0: chunkStartSec, t1: chunkEndSec };
+  }
+  return {
+    t0: chunkStartSec + timestamps[0],
+    t1: chunkStartSec + timestamps[timestamps.length - 1],
+  };
+}
+
 const CHUNK_SAMPLES = 30 * 16000; // 30 seconds at 16kHz
 
 export async function transcribeFile(
@@ -223,7 +242,7 @@ export async function transcribeFile(
       log(`[parakeet] transcribeFile chunk ${chunkIndex}: samples=${chunk.length}, t=${chunkStartSec.toFixed(1)}–${chunkEndSec.toFixed(1)}s`);
 
       const requestId = nextRequestId++;
-      const chunkResult = await new Promise<{ text: string }>((resolve, reject) => {
+      const chunkResult = await new Promise<{ text: string; tokens?: string[]; timestamps?: number[] }>((resolve, reject) => {
         let settled = false;
 
         const timer = setTimeout(() => {
@@ -243,7 +262,8 @@ export async function transcribeFile(
           if (msg.type === 'error') {
             reject(new Error((msg as ParakeetErrorResponse).message));
           } else {
-            resolve({ text: (msg as ParakeetTranscribeResponse).text.trim() });
+            const m = msg as ParakeetTranscribeResponse;
+            resolve({ text: m.text.trim(), tokens: m.tokens, timestamps: m.timestamps });
           }
         };
 
@@ -260,10 +280,11 @@ export async function transcribeFile(
       chunkIndex++;
 
       if (chunkResult.text) {
+        const { t0, t1 } = chunkSegmentTimes(chunkResult.timestamps, chunkStartSec, chunkEndSec);
         const segment: TranscribeSegment = {
           text: chunkResult.text,
-          t0: chunkStartSec,
-          t1: chunkEndSec,
+          t0,
+          t1,
           speakerTurn: false,
         };
         allSegments.push(segment);
