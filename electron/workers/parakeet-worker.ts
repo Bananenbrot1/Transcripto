@@ -58,11 +58,18 @@ parentPort!.postMessage({ type: 'ready' } as ParakeetReadyMessage);
 parentPort!.on('message', (msg: ParakeetTranscribeRequest) => {
   if (msg.type !== 'transcribe') return;
 
+  const dbg = (s: string) => process.stderr.write(`[parakeet-worker] ${s}\n`);
+
   try {
+    dbg(`transcribe start: id=${msg.id}, samples=${msg.samples.length}, sampleRate=${msg.sampleRate}`);
     const stream = recognizer.createStream();
+    dbg('createStream OK');
     stream.acceptWaveform({ sampleRate: msg.sampleRate, samples: msg.samples });
+    dbg('acceptWaveform OK');
     recognizer.decode(stream);
+    dbg('decode OK');
     const result = recognizer.getResult(stream);
+    dbg(`getResult OK: text="${result.text.slice(0, 60)}"`);
 
     parentPort!.postMessage({
       type: 'result',
@@ -70,6 +77,7 @@ parentPort!.on('message', (msg: ParakeetTranscribeRequest) => {
       text: result.text,
     } as ParakeetTranscribeResponse);
   } catch (err) {
+    dbg(`error: ${err instanceof Error ? err.message : String(err)}`);
     parentPort!.postMessage({
       type: 'error',
       id: msg.id,

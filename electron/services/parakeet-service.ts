@@ -39,7 +39,9 @@ function createWorker(modelDir: string): Promise<Worker> {
 
     let stderrOutput = '';
     worker.stderr?.on('data', (chunk: Buffer) => {
-      stderrOutput += chunk.toString();
+      const text = chunk.toString();
+      stderrOutput += text;
+      process.stderr.write(`[parakeet-worker] ${text}`);
     });
 
     const onMessage = (msg: ParakeetReadyMessage | ParakeetTranscribeResponse | ParakeetErrorResponse) => {
