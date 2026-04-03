@@ -10,6 +10,7 @@ import * as diarizationService from './services/diarization-service.js';
 import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
 import * as summaryService from './services/summary-service.js';
+import * as videoExtractService from './services/video-extract-service.js';
 import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
@@ -231,7 +232,10 @@ function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       filters: [
-        { name: 'Audio Files', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'] },
+        { name: 'Audio & Video Files', extensions: [
+          'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac',
+          'mp4', 'mkv', 'mov', 'avi', 'webm', 'flv', 'wmv',
+        ]},
       ],
     });
     if (result.canceled || result.filePaths.length === 0) {
@@ -239,8 +243,38 @@ function registerIpcHandlers(): void {
     }
     const filePath = result.filePaths[0];
     const fileName = path.basename(filePath);
+
+    if (videoExtractService.isVideoFile(filePath)) {
+      const tempWavPath = await videoExtractService.extractAudio(filePath);
+      return { fileName, tempWavPath, isVideo: true as const };
+    }
+
     const fileBuffer = fs.readFileSync(filePath);
-    return { fileName, data: fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength) };
+    const data = fileBuffer.buffer.slice(
+      fileBuffer.byteOffset,
+      fileBuffer.byteOffset + fileBuffer.byteLength,
+    );
+    return { fileName, data, isVideo: false as const };
+  });
+
+  ipcMain.handle('transcribe-video-file', async (event, tempWavPath: string, language: string) => {
+    console.log(`[main] IPC transcribe-video-file: lang=${language}, engine=${activeEngine}, path=${tempWavPath}`);
+    try {
+      const fileBuffer = fs.readFileSync(tempWavPath);
+      const { samples, durationSec } = videoExtractService.wavToFloat32(fileBuffer);
+      console.log(`[main] IPC transcribe-video-file: duration=${durationSec.toFixed(1)}s, samples=${samples.length}`);
+      const service = activeEngine === 'parakeet' ? parakeetService : whisperService;
+      const result = await service.transcribeFile(samples.buffer as ArrayBuffer, language, durationSec, (progress) => {
+        event.sender.send('transcribe-file-progress', progress);
+      });
+      console.log(`[main] IPC transcribe-video-file done: segments=${result.segments.length}`);
+      return result;
+    } catch (err) {
+      console.error('[main] IPC transcribe-video-file error:', err);
+      throw err;
+    } finally {
+      try { fs.unlinkSync(tempWavPath); } catch {}
+    }
   });
 
   ipcMain.handle('diarize', async (event, numSpeakers: number = -1) => {
@@ -322,4 +356,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   globalShortcut.unregisterAll();
   audioFileService.cleanup();
+  videoExtractService.cleanupExtractedAudio();
 });

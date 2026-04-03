@@ -19,6 +19,15 @@ function formatTime(timestamp: number): string {
   });
 }
 
+/** Format seconds as H:MM:SS (or M:SS when under an hour) for file/video segments. */
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function SpeakerLabel({
   segment,
   speakerNames,
@@ -244,7 +253,9 @@ export function TranscriptPanel({
               onDeleteSegment={onDeleteSegment}
             />
             <span className="text-xs text-muted-foreground">
-              {formatTime(segment.timestamp)}
+              {segment.source === 'file' && segment.startTime != null
+                ? formatDuration(segment.startTime)
+                : formatTime(segment.timestamp)}
             </span>
           </div>
         </div>

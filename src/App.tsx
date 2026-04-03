@@ -447,7 +447,7 @@ export function App() {
   const modelDisplayName = currentModel
     ? currentModel.label.split(' — ')[0].split(' (')[0]
     : 'Unknown';
-  const isFileBusy = fileImportState === 'decoding' || fileImportState === 'transcribing';
+  const isFileBusy = fileImportState === 'extracting' || fileImportState === 'decoding' || fileImportState === 'transcribing';
   const showPostRecordingBar = recordingState === 'idle' && segments.length > 0 && !isFileBusy;
   const showPermissionBannerInMain = isCapturing && (systemAudioStatus === 'no-permission' || systemAudioStatus === 'failed');
   const showLiveSplitPane = recordingState === 'recording' && liveSummarySettings.enabled && hasSummaryApiKey;
@@ -473,6 +473,12 @@ export function App() {
             {recordingState === 'recording' && (
               <span className={`text-sm font-mono font-medium tabular-nums ${isPaused ? 'text-muted-foreground' : 'text-destructive'}`}>
                 {isPaused ? 'Paused' : formatElapsed(elapsedRecording)}
+              </span>
+            )}
+            {fileImportState === 'extracting' && (
+              <span className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Loader2 className="size-3.5 animate-spin" />
+                Extracting audio...
               </span>
             )}
             {fileImportState === 'decoding' && (
@@ -525,8 +531,8 @@ export function App() {
               variant="outline"
               size="icon"
               onClick={importFile}
-              disabled={recordingState !== 'idle' || fileImportState === 'decoding' || fileImportState === 'transcribing'}
-              title="Import audio file"
+              disabled={recordingState !== 'idle' || isFileBusy}
+              title="Import audio or video file"
             >
               <FileAudio className="size-4" />
             </Button>
