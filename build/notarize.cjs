@@ -1,4 +1,17 @@
 const { notarize } = require("@electron/notarize");
+const path = require("path");
+const fs = require("fs");
+
+// Load .env.local if it exists
+const envPath = path.resolve(__dirname, "../.env.local");
+if (fs.existsSync(envPath)) {
+  fs.readFileSync(envPath, "utf-8")
+    .split("\n")
+    .forEach((line) => {
+      const match = line.match(/^([^=]+)="?([^"]*)"?$/);
+      if (match) process.env[match[1]] = match[2];
+    });
+}
 
 exports.default = async function (context) {
   if (context.electronPlatformName !== "darwin") {

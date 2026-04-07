@@ -5,6 +5,7 @@ dist-app/
 out/
 models/
 .DS_Store
+.env.local
 *.dmg
 .ralph*/
 plans/

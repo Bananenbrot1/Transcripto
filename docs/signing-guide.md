@@ -38,7 +38,7 @@ If it says **0 valid identities**, the intermediate certificate is missing or th
 Apple requires this for notarization (so the build tool can authenticate without triggering 2FA).
 
 1. Go to [account.apple.com](https://account.apple.com)
-2. Sign in with the **Apple Developer account** (Christian Schlaiss)
+2. Sign in with the **Apple Developer account** 
 3. Go to **Sign-In and Security** > **App-Specific Passwords**
 4. Click **"Generate an app-specific password"**
 5. Label it something like `Transcripto notarization`
