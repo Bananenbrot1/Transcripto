@@ -3,12 +3,16 @@ import { BrowserWindow } from 'electron';
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
+let initialized = false;
+
 function sendToRenderer(channel: string, payload: unknown): void {
   const win = BrowserWindow.getAllWindows()[0];
   if (win) win.webContents.send(channel, payload);
 }
 
 export function initialize(): void {
+  if (initialized) return;
+  initialized = true;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 

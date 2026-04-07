@@ -21,6 +21,7 @@ vi.mock('electron', () => ({
 describe('update-service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.resetModules();
     vi.useFakeTimers();
     mockAutoUpdater.autoDownload = false;
     mockAutoUpdater.autoInstallOnAppQuit = false;
@@ -56,8 +57,12 @@ describe('update-service', () => {
   it('triggers a periodic update check after 4 hours', async () => {
     const { initialize } = await import('./update-service.js');
     initialize();
+    // Consume the 10s startup timeout first
+    await vi.advanceTimersByTimeAsync(10_000);
+    const callsAfterTimeout = mockAutoUpdater.checkForUpdates.mock.calls.length;
+    // Now advance by 4 hours — interval should fire once more
     await vi.advanceTimersByTimeAsync(4 * 60 * 60 * 1000);
-    expect(mockAutoUpdater.checkForUpdates).toHaveBeenCalled();
+    expect(mockAutoUpdater.checkForUpdates.mock.calls.length).toBe(callsAfterTimeout + 1);
   });
 
   it('calls autoUpdater.quitAndInstall on quitAndInstall()', async () => {
