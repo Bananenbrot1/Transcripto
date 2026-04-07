@@ -50,3 +50,9 @@ afterSign: build/notarize.cjs
 dmg:
   title: "${productName} ${version}"
   sign: true
+
+publish:
+  provider: github
+  owner: Bananenbrot1
+  repo: Transcripto
+  releaseType: release

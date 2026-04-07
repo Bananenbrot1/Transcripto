@@ -96,6 +96,28 @@ const api: ElectronAPI = {
 
   transcribeVideoFile: (tempWavPath: string, language: string) =>
     ipcRenderer.invoke('transcribe-video-file', tempWavPath, language),
+
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+
+  quitAndInstall: () => ipcRenderer.send('quit-and-install'),
+
+  onUpdateAvailable: (callback: (info: { version: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: { version: string }) => callback(info);
+    ipcRenderer.on('update-available', handler);
+    return () => ipcRenderer.removeListener('update-available', handler);
+  },
+
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: { version: string }) => callback(info);
+    ipcRenderer.on('update-downloaded', handler);
+    return () => ipcRenderer.removeListener('update-downloaded', handler);
+  },
+
+  onUpdateError: (callback: (info: { message: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: { message: string }) => callback(info);
+    ipcRenderer.on('update-error', handler);
+    return () => ipcRenderer.removeListener('update-error', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

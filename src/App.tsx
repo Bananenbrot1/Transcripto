@@ -24,6 +24,7 @@ import { TranscriptPanel } from '@/components/transcript-panel';
 import { DiarizationControls } from '@/components/diarization-controls';
 import { SummaryPanel } from '@/components/summary-panel';
 import { LiveNotesPanel } from '@/components/live-notes-panel';
+import { UpdateBanner } from '@/components/update-banner';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import type { SummaryResult } from '../shared/types';
 import { STORE_DEFAULTS } from '../shared/store-defaults';
@@ -454,6 +455,7 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
+      <UpdateBanner />
       <header className="border-b px-6 py-3">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold tracking-tight shrink-0">Transcripto</h1>
