@@ -79,4 +79,9 @@ export interface ElectronAPI {
     | null
   >;
   transcribeVideoFile: (tempWavPath: string, language: string) => Promise<TranscribeResult>;
+  checkForUpdates: () => Promise<void>;
+  quitAndInstall: () => void;
+  onUpdateAvailable: (callback: (info: { version: string }) => void) => () => void;
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void;
+  onUpdateError: (callback: (info: { message: string }) => void) => () => void;
 }
