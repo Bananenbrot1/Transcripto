@@ -12,3 +12,4 @@ plans/
 .agents/
 .claude/
 .worktrees/
+.env*
