@@ -9,6 +9,8 @@ models/
 *.dmg
 .ralph*/
 plans/
+!docs/superpowers/plans/
+!docs/superpowers/plans/**
 .agents/
 .claude/
 .worktrees/
