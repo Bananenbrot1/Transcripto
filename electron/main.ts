@@ -11,6 +11,7 @@ import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
 import * as summaryService from './services/summary-service.js';
 import * as videoExtractService from './services/video-extract-service.js';
+import * as updateService from './services/update-service.js';
 import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
@@ -297,6 +298,14 @@ function registerIpcHandlers(): void {
       audioFileService.cleanup();
     }
   });
+
+  ipcMain.handle('check-for-updates', () => {
+    updateService.checkForUpdates();
+  });
+
+  ipcMain.on('quit-and-install', () => {
+    updateService.quitAndInstall();
+  });
 }
 
 function createWindow(): void {
@@ -339,6 +348,9 @@ registerIpcHandlers();
 
 app.whenReady().then(() => {
   createWindow();
+  if (app.isPackaged) {
+    updateService.initialize();
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
