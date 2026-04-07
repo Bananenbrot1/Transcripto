@@ -8,8 +8,15 @@ const mockAutoUpdater = {
   quitAndInstall: vi.fn(),
 };
 
-vi.mock('electron-updater', () => ({
-  autoUpdater: mockAutoUpdater,
+// update-service.ts loads electron-updater via createRequire (not a static
+// import) because electron-updater's autoUpdater is a getter-based CJS export
+// that Node.js ESM static analysis cannot resolve as a named binding.
+// We mock node:module so createRequire returns our mockAutoUpdater instead.
+vi.mock('node:module', () => ({
+  createRequire: () => (id: string) => {
+    if (id === 'electron-updater') return { autoUpdater: mockAutoUpdater };
+    return {};
+  },
 }));
 
 vi.mock('electron', () => ({
