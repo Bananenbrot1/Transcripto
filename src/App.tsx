@@ -408,6 +408,11 @@ export function App() {
         onSelectLanguage={setSelectedLanguage}
         onDownload={downloadModel}
         onComplete={handleOnboardingComplete}
+        summarySettings={summarySettings}
+        summaryDecryptedKey={summaryDecryptedKey}
+        onSummaryApiBaseUrlChange={setSummaryApiBaseUrl}
+        onSummaryApiKeyChange={setSummaryApiKey}
+        onSummaryModelIdChange={setSummaryModelId}
       />
     );
   }

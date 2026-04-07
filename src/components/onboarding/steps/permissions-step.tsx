@@ -6,11 +6,11 @@ import { StepWrapper } from '../step-wrapper';
 
 interface PermissionsStepProps {
   direction: number;
-  onComplete: () => void;
+  onNext: () => void;
   onBack: () => void;
 }
 
-export function PermissionsStep({ direction, onComplete, onBack }: PermissionsStepProps) {
+export function PermissionsStep({ direction, onNext, onBack }: PermissionsStepProps) {
   const [micGranted, setMicGranted] = useState(false);
   const [screenGranted, setScreenGranted] = useState(false);
 
@@ -121,8 +121,8 @@ export function PermissionsStep({ direction, onComplete, onBack }: PermissionsSt
             <ChevronLeft className="size-4" />
             Back
           </Button>
-          <Button onClick={onComplete}>
-            Start Transcribing
+          <Button onClick={onNext}>
+            Continue
           </Button>
         </div>
       </div>
