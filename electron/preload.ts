@@ -93,6 +93,9 @@ const api: ElectronAPI = {
   },
 
   selectAudioFile: () => ipcRenderer.invoke('select-audio-file'),
+
+  transcribeVideoFile: (tempWavPath: string, language: string) =>
+    ipcRenderer.invoke('transcribe-video-file', tempWavPath, language),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

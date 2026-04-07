@@ -18,6 +18,8 @@ export interface ParakeetTranscribeResponse {
   type: 'result';
   id: number;
   text: string;
+  tokens?: string[];
+  timestamps?: number[];
 }
 
 export interface ParakeetErrorResponse {
@@ -68,6 +70,8 @@ parentPort!.on('message', (msg: ParakeetTranscribeRequest) => {
       type: 'result',
       id: msg.id,
       text: result.text,
+      tokens: result.tokens,
+      timestamps: result.timestamps,
     } as ParakeetTranscribeResponse);
   } catch (err) {
     parentPort!.postMessage({
