@@ -32,6 +32,8 @@ const api: ElectronAPI = {
 
   openScreenPermissionSettings: () => ipcRenderer.invoke('open-screen-permission-settings'),
 
+  triggerScreenCaptureRegistration: () => ipcRenderer.invoke('trigger-screen-capture-registration'),
+
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),
 
   selectExportFolder: () => ipcRenderer.invoke('select-folder'),
