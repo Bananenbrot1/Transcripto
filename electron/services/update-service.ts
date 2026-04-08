@@ -1,5 +1,13 @@
-import { autoUpdater } from 'electron-updater';
+import { createRequire } from 'node:module';
+import type { AppUpdater } from 'electron-updater';
 import { BrowserWindow } from 'electron';
+
+// electron-updater is a CJS module that exports `autoUpdater` via a lazy
+// Object.defineProperty getter. Node.js ESM static analysis cannot resolve
+// getter-based named exports, so a named import fails at load time.
+// createRequire bypasses static analysis and loads it correctly at runtime.
+const _require = createRequire(import.meta.url);
+const autoUpdater: AppUpdater = _require('electron-updater').autoUpdater;
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 

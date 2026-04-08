@@ -104,6 +104,10 @@ function registerIpcHandlers(): void {
     shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
   });
 
+  ipcMain.handle('trigger-screen-capture-registration', async () => {
+    await desktopCapturer.getSources({ types: ['screen'] });
+  });
+
   ipcMain.handle('get-app-info', () => {
     return {
       appName: app.getName(),

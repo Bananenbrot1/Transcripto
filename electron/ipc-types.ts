@@ -84,4 +84,5 @@ export interface ElectronAPI {
   onUpdateAvailable: (callback: (info: { version: string }) => void) => () => void;
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void;
   onUpdateError: (callback: (info: { message: string }) => void) => () => void;
+  triggerScreenCaptureRegistration: () => Promise<void>;
 }

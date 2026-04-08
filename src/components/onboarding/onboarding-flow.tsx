@@ -4,11 +4,13 @@ import { WelcomeStep } from './steps/welcome-step';
 import { ModelStep } from './steps/model-step';
 import { LanguageStep } from './steps/language-step';
 import { PermissionsStep } from './steps/permissions-step';
+import { AiSummaryStep } from './steps/ai-summary-step';
 import type { ModelStatus, ModelDefinition } from '@/types/transcription';
+import type { SummarySettings } from '@/hooks/use-summary-settings';
 
-export type OnboardingStep = 'welcome' | 'model' | 'language' | 'permissions';
+export type OnboardingStep = 'welcome' | 'model' | 'language' | 'permissions' | 'ai-summary';
 
-const STEPS: OnboardingStep[] = ['welcome', 'model', 'language', 'permissions'];
+const STEPS: OnboardingStep[] = ['welcome', 'model', 'language', 'permissions', 'ai-summary'];
 
 interface OnboardingFlowProps {
   status: ModelStatus;
@@ -20,6 +22,12 @@ interface OnboardingFlowProps {
   onSelectLanguage: (lang: string) => void;
   onDownload: () => void;
   onComplete: () => void;
+  // AI Summary
+  summarySettings: SummarySettings;
+  summaryDecryptedKey: string;
+  onSummaryApiBaseUrlChange: (url: string) => void;
+  onSummaryApiKeyChange: (key: string) => Promise<void>;
+  onSummaryModelIdChange: (modelId: string) => void;
 }
 
 export function OnboardingFlow({
@@ -32,6 +40,11 @@ export function OnboardingFlow({
   onSelectLanguage,
   onDownload,
   onComplete,
+  summarySettings,
+  summaryDecryptedKey,
+  onSummaryApiBaseUrlChange,
+  onSummaryApiKeyChange,
+  onSummaryModelIdChange,
 }: OnboardingFlowProps) {
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [direction, setDirection] = useState(1); // 1 = forward, -1 = back
@@ -88,6 +101,19 @@ export function OnboardingFlow({
             <PermissionsStep
               key="permissions"
               direction={direction}
+              onNext={goNext}
+              onBack={goBack}
+            />
+          )}
+          {step === 'ai-summary' && (
+            <AiSummaryStep
+              key="ai-summary"
+              direction={direction}
+              summarySettings={summarySettings}
+              summaryDecryptedKey={summaryDecryptedKey}
+              onApiBaseUrlChange={onSummaryApiBaseUrlChange}
+              onApiKeyChange={onSummaryApiKeyChange}
+              onModelIdChange={onSummaryModelIdChange}
               onComplete={onComplete}
               onBack={goBack}
             />
