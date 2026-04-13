@@ -209,6 +209,20 @@ function SegmentActions({
   );
 }
 
+/** Check if this segment has the same speaker as the previous one. */
+function isSameSpeakerAsPrev(
+  segments: TranscriptSegment[],
+  index: number,
+  speakerNames: Record<string, string>,
+): boolean {
+  if (index === 0) return false;
+  const curr = segments[index];
+  const prev = segments[index - 1];
+  const currName = curr.speakerId ? (speakerNames[curr.speakerId] ?? curr.speaker) : curr.speaker;
+  const prevName = prev.speakerId ? (speakerNames[prev.speakerId] ?? prev.speaker) : prev.speaker;
+  return currName === prevName && curr.source === prev.source;
+}
+
 export function TranscriptPanel({
   segments,
   speakerNames,
@@ -236,41 +250,55 @@ export function TranscriptPanel({
 
   return (
     <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-      {segments.map((segment) => (
-        <div
-          key={segment.id}
-          className={`group flex gap-3 items-start ${correctingIds?.has(segment.id) ? 'opacity-50 transition-opacity duration-200' : ''}`}
-        >
-          <div className="shrink-0 pt-0.5">
-            <SpeakerLabel
-              segment={segment}
-              speakerNames={speakerNames}
-              onRenameSpeaker={onRenameSpeaker}
-            />
+      {segments.map((segment, index) => {
+        const collapsed = isSameSpeakerAsPrev(segments, index, speakerNames);
+
+        return (
+          <div
+            key={segment.id}
+            className={`group flex gap-3 items-start ${correctingIds?.has(segment.id) ? 'opacity-50 transition-opacity duration-200' : ''}`}
+          >
+            <div className="shrink-0 pt-0.5">
+              {collapsed ? (
+                <div className="opacity-0 group-hover:opacity-40 transition-opacity">
+                  <SpeakerLabel
+                    segment={segment}
+                    speakerNames={speakerNames}
+                    onRenameSpeaker={onRenameSpeaker}
+                  />
+                </div>
+              ) : (
+                <SpeakerLabel
+                  segment={segment}
+                  speakerNames={speakerNames}
+                  onRenameSpeaker={onRenameSpeaker}
+                />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <EditableText
+                segment={segment}
+                onUpdateText={onUpdateText}
+                onDeleteSegment={onDeleteSegment}
+                editingId={editingId}
+                setEditingId={setEditingId}
+                isCorrecting={correctingIds?.has(segment.id)}
+              />
+            </div>
+            <div className="flex items-center gap-1 shrink-0 pt-0.5">
+              <SegmentActions
+                segment={segment}
+                onDeleteSegment={onDeleteSegment}
+              />
+              <span className="text-xs text-muted-foreground">
+                {segment.source === 'file' && segment.startTime != null
+                  ? formatDuration(segment.startTime)
+                  : formatTime(segment.timestamp)}
+              </span>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <EditableText
-              segment={segment}
-              onUpdateText={onUpdateText}
-              onDeleteSegment={onDeleteSegment}
-              editingId={editingId}
-              setEditingId={setEditingId}
-              isCorrecting={correctingIds?.has(segment.id)}
-            />
-          </div>
-          <div className="flex items-center gap-1 shrink-0 pt-0.5">
-            <SegmentActions
-              segment={segment}
-              onDeleteSegment={onDeleteSegment}
-            />
-            <span className="text-xs text-muted-foreground">
-              {segment.source === 'file' && segment.startTime != null
-                ? formatDuration(segment.startTime)
-                : formatTime(segment.timestamp)}
-            </span>
-          </div>
-        </div>
-      ))}
+        );
+      })}
       <div ref={bottomRef} />
     </div>
   );
