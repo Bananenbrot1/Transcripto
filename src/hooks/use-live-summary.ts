@@ -9,7 +9,7 @@ interface UseLiveSummaryOptions {
   segments: TranscriptSegment[];
   isRecording: boolean;
   liveSummarySettings: StoreSchema['liveSummary'];
-  hasSummaryApiKey: boolean;
+  hasLlmConfigured: boolean;
 }
 
 interface UseLiveSummaryReturn {
@@ -25,7 +25,7 @@ export function useLiveSummary({
   segments,
   isRecording,
   liveSummarySettings,
-  hasSummaryApiKey,
+  hasLlmConfigured,
 }: UseLiveSummaryOptions): UseLiveSummaryReturn {
   const [liveSummary, setLiveSummary] = useState<SummaryResult | null>(null);
   const [status, setStatus] = useState<LiveSummaryGenerationStatus>('idle');
@@ -40,7 +40,7 @@ export function useLiveSummary({
   const correctionsRef = useRef<string[]>([]);
   useEffect(() => { correctionsRef.current = corrections; }, [corrections]);
 
-  const enabled = liveSummarySettings.enabled && hasSummaryApiKey;
+  const enabled = liveSummarySettings.enabled && hasLlmConfigured;
   const intervalMs = liveSummarySettings.intervalSeconds * 1000;
 
   const addCorrection = useCallback((correction: string) => {

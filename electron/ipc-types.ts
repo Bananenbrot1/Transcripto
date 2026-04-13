@@ -18,6 +18,10 @@ import type {
   SummaryResult,
   FileTranscribeProgress,
   LiveSummarizeRequest,
+  Provider,
+  TaskConfig,
+  LlmModelDefinition,
+  LlmDownloadProgress,
 } from '../shared/types';
 
 export type {
@@ -33,6 +37,10 @@ export type {
   SummaryResult,
   FileTranscribeProgress,
   LiveSummarizeRequest,
+  Provider,
+  TaskConfig,
+  LlmModelDefinition,
+  LlmDownloadProgress,
 };
 
 /** All methods exposed on window.electronAPI via contextBridge. */
@@ -85,4 +93,19 @@ export interface ElectronAPI {
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void;
   onUpdateError: (callback: (info: { message: string }) => void) => () => void;
   triggerScreenCaptureRegistration: () => Promise<void>;
+
+  getProviders: () => Promise<Provider[]>;
+  addProvider: (provider: Omit<Provider, 'id'>) => Promise<Provider>;
+  updateProvider: (provider: Provider) => Promise<void>;
+  deleteProvider: (id: string) => Promise<void>;
+  testProvider: (provider: Provider) => Promise<{ ok: boolean; error?: string }>;
+  ollamaListModels: (ollamaBaseUrl: string) => Promise<string[]>;
+
+  getAvailableLlmModels: () => Promise<LlmModelDefinition[]>;
+  getLlmModelStatus: (modelId: string) => Promise<{ downloaded: boolean }>;
+  downloadLlmModel: (modelId: string) => Promise<void>;
+  deleteLlmModel: (modelId: string) => Promise<void>;
+  onLlmDownloadProgress: (callback: (progress: LlmDownloadProgress) => void) => () => void;
+
+  correctSegment: (rawText: string) => Promise<string>;
 }

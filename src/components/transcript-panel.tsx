@@ -8,6 +8,7 @@ interface TranscriptPanelProps {
   onRenameSpeaker: (speakerId: string, name: string) => void;
   onUpdateText?: (id: string, text: string) => void;
   onDeleteSegment?: (id: string) => void;
+  correctingIds?: Set<string>;
 }
 
 function formatTime(timestamp: number): string {
@@ -101,12 +102,14 @@ function EditableText({
   onDeleteSegment,
   editingId,
   setEditingId,
+  isCorrecting,
 }: {
   segment: TranscriptSegment;
   onUpdateText?: (id: string, text: string) => void;
   onDeleteSegment?: (id: string) => void;
   editingId: string | null;
   setEditingId: (id: string | null) => void;
+  isCorrecting?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState(segment.text);
@@ -170,6 +173,9 @@ function EditableText({
       onClick={startEditing}
     >
       {segment.text}
+      {isCorrecting && (
+        <span className="text-xs text-muted-foreground italic ml-1">correcting…</span>
+      )}
     </p>
   );
 }
@@ -209,6 +215,7 @@ export function TranscriptPanel({
   onRenameSpeaker,
   onUpdateText,
   onDeleteSegment,
+  correctingIds,
 }: TranscriptPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -230,7 +237,10 @@ export function TranscriptPanel({
   return (
     <div className="flex-1 overflow-y-auto space-y-3 pr-1">
       {segments.map((segment) => (
-        <div key={segment.id} className="group flex gap-3 items-start">
+        <div
+          key={segment.id}
+          className={`group flex gap-3 items-start ${correctingIds?.has(segment.id) ? 'opacity-50 transition-opacity duration-200' : ''}`}
+        >
           <div className="shrink-0 pt-0.5">
             <SpeakerLabel
               segment={segment}
@@ -245,6 +255,7 @@ export function TranscriptPanel({
               onDeleteSegment={onDeleteSegment}
               editingId={editingId}
               setEditingId={setEditingId}
+              isCorrecting={correctingIds?.has(segment.id)}
             />
           </div>
           <div className="flex items-center gap-1 shrink-0 pt-0.5">

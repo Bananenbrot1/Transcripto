@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest } from './ipc-types';
+import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest, Provider, LlmDownloadProgress } from './ipc-types';
 
 // Typed against ElectronAPI so the compiler verifies method presence and signatures.
 const api: ElectronAPI = {
@@ -120,6 +120,34 @@ const api: ElectronAPI = {
     ipcRenderer.on('update-error', handler);
     return () => ipcRenderer.removeListener('update-error', handler);
   },
+
+  getProviders: () => ipcRenderer.invoke('get-providers'),
+
+  addProvider: (provider: Omit<Provider, 'id'>) => ipcRenderer.invoke('add-provider', provider),
+
+  updateProvider: (provider: Provider) => ipcRenderer.invoke('update-provider', provider),
+
+  deleteProvider: (id: string) => ipcRenderer.invoke('delete-provider', id),
+
+  testProvider: (provider: Provider) => ipcRenderer.invoke('test-provider', provider),
+
+  ollamaListModels: (ollamaBaseUrl: string) => ipcRenderer.invoke('ollama-list-models', ollamaBaseUrl),
+
+  getAvailableLlmModels: () => ipcRenderer.invoke('get-available-llm-models'),
+
+  getLlmModelStatus: (modelId: string) => ipcRenderer.invoke('get-llm-model-status', modelId),
+
+  downloadLlmModel: (modelId: string) => ipcRenderer.invoke('download-llm-model', modelId),
+
+  deleteLlmModel: (modelId: string) => ipcRenderer.invoke('delete-llm-model', modelId),
+
+  onLlmDownloadProgress: (callback: (progress: LlmDownloadProgress) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: LlmDownloadProgress) => callback(progress);
+    ipcRenderer.on('llm-download-progress', handler);
+    return () => ipcRenderer.removeListener('llm-download-progress', handler);
+  },
+
+  correctSegment: (rawText: string) => ipcRenderer.invoke('correct-segment', rawText),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

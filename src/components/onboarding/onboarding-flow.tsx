@@ -7,6 +7,7 @@ import { PermissionsStep } from './steps/permissions-step';
 import { AiSummaryStep } from './steps/ai-summary-step';
 import type { ModelStatus, ModelDefinition } from '@/types/transcription';
 import type { SummarySettings } from '@/hooks/use-summary-settings';
+import type { Provider } from '../../../shared/types';
 
 export type OnboardingStep = 'welcome' | 'model' | 'language' | 'permissions' | 'ai-summary';
 
@@ -22,12 +23,9 @@ interface OnboardingFlowProps {
   onSelectLanguage: (lang: string) => void;
   onDownload: () => void;
   onComplete: () => void;
-  // AI Summary
   summarySettings: SummarySettings;
-  summaryDecryptedKey: string;
-  onSummaryApiBaseUrlChange: (url: string) => void;
-  onSummaryApiKeyChange: (key: string) => Promise<void>;
-  onSummaryModelIdChange: (modelId: string) => void;
+  summaryProviders: Provider[];
+  onConfigureAiProvider: (opts: { apiBaseUrl: string; apiKey: string; modelId: string }) => Promise<void>;
 }
 
 export function OnboardingFlow({
@@ -41,13 +39,11 @@ export function OnboardingFlow({
   onDownload,
   onComplete,
   summarySettings,
-  summaryDecryptedKey,
-  onSummaryApiBaseUrlChange,
-  onSummaryApiKeyChange,
-  onSummaryModelIdChange,
+  summaryProviders,
+  onConfigureAiProvider,
 }: OnboardingFlowProps) {
   const [step, setStep] = useState<OnboardingStep>('welcome');
-  const [direction, setDirection] = useState(1); // 1 = forward, -1 = back
+  const [direction, setDirection] = useState(1);
 
   const currentIndex = STEPS.indexOf(step);
 
@@ -110,17 +106,14 @@ export function OnboardingFlow({
               key="ai-summary"
               direction={direction}
               summarySettings={summarySettings}
-              summaryDecryptedKey={summaryDecryptedKey}
-              onApiBaseUrlChange={onSummaryApiBaseUrlChange}
-              onApiKeyChange={onSummaryApiKeyChange}
-              onModelIdChange={onSummaryModelIdChange}
+              summaryProviders={summaryProviders}
+              onConfigureAiProvider={onConfigureAiProvider}
               onComplete={onComplete}
               onBack={goBack}
             />
           )}
         </AnimatePresence>
 
-        {/* Progress dots */}
         <div className="mt-12 flex justify-center gap-2">
           {STEPS.map((s, i) => (
             <div
