@@ -1,6 +1,13 @@
 import * as settingsStore from './settings-store.js';
 import { decryptString } from './crypto-utils.js';
+import * as llmModelManager from './llm-model-manager.js';
 import type { Provider, ChatMessage } from '../../shared/types.js';
+import type { getLlama as GetLlamaFn, LlamaChatSession as LlamaChatSessionClass } from 'node-llama-cpp';
+
+type LlamaInstance = Awaited<ReturnType<typeof GetLlamaFn>>;
+type LlamaModel = Awaited<ReturnType<LlamaInstance['loadModel']>>;
+type LlamaContext = Awaited<ReturnType<LlamaModel['createContext']>>;
+type LlamaContextSequence = ReturnType<LlamaContext['getSequence']>;
 
 function getProvider(providerId: string): Provider {
   const providers = settingsStore.get('providers');
@@ -59,12 +66,71 @@ export async function ollamaListModels(ollamaBaseUrl: string): Promise<string[]>
   return ((data.models ?? []) as { name: string }[]).map((m) => m.name);
 }
 
+// ─── Local backend state (lazy-loaded, one model at a time) ───────────────────
+
+let llamaInstance: LlamaInstance | null = null;
+let loadedModelId: string | null = null;
+let loadedModel: LlamaModel | null = null;
+let loadedContext: LlamaContext | null = null;
+
+async function ensureLocalModel(localModelId: string): Promise<LlamaContext> {
+  if (!llmModelManager.isLlmModelDownloaded(localModelId)) {
+    throw new Error(`Local model "${localModelId}" is not downloaded. Download it in Settings > Providers.`);
+  }
+
+  // If a different model is loaded, tear it down first.
+  if (loadedModelId !== null && loadedModelId !== localModelId) {
+    if (loadedContext) { await loadedContext.dispose(); loadedContext = null; }
+    if (loadedModel) { await loadedModel.dispose(); loadedModel = null; }
+    loadedModelId = null;
+  }
+
+  if (!llamaInstance) {
+    const { getLlama } = await import('node-llama-cpp');
+    // build:'never' skips any compile attempt and uses the pre-downloaded binary.
+    // Metal GPU is picked up automatically on Apple Silicon.
+    llamaInstance = await getLlama({ build: 'never' });
+  }
+
+  if (!loadedModel) {
+    const modelPath = llmModelManager.getLlmModelPath(localModelId);
+    loadedModel = await llamaInstance.loadModel({ modelPath });
+    loadedModelId = localModelId;
+  }
+
+  if (!loadedContext) {
+    loadedContext = await loadedModel.createContext();
+  }
+
+  return loadedContext;
+}
+
 async function localComplete(
-  _provider: Provider,
+  provider: Provider,
   _modelId: string,
-  _messages: ChatMessage[],
+  messages: ChatMessage[],
 ): Promise<string> {
-  throw new Error('Local GGUF backend not yet implemented. Use a cloud or Ollama provider.');
+  const localModelId = provider.localModelId;
+  if (!localModelId) throw new Error('Local provider has no model configured');
+
+  const { LlamaChatSession } = await import('node-llama-cpp');
+  const context = await ensureLocalModel(localModelId);
+
+  // Each call gets a fresh sequence — no chat history bleeds between corrections.
+  const sequence = context.getSequence() as LlamaContextSequence;
+  const session = new LlamaChatSession({ contextSequence: sequence as ConstructorParameters<typeof LlamaChatSessionClass>[0]['contextSequence'] });
+
+  const userContent = messages
+    .filter((m) => m.role === 'user')
+    .map((m) => m.content)
+    .join('\n');
+
+  try {
+    return (await session.prompt(userContent)).trim();
+  } finally {
+    await session.dispose();
+    sequence.dispose(); // Return the slot to the pool — missing this caused "No sequences left"
+  }
 }
 
 export async function complete(
@@ -95,8 +161,15 @@ export async function testConnection(
       case 'ollama':
         await ollamaComplete(provider, '', testMessages);
         break;
-      case 'local':
-        throw new Error('Local GGUF backend not yet implemented.');
+      case 'local': {
+        const modelId = provider.localModelId;
+        if (!modelId) return { ok: false, error: 'No model configured for this provider' };
+        if (!llmModelManager.isLlmModelDownloaded(modelId)) {
+          return { ok: false, error: 'Model not downloaded yet. Download it in Settings > Providers.' };
+        }
+        // Model exists — that is sufficient for a connectivity test on a local provider.
+        break;
+      }
     }
     return { ok: true };
   } catch (err) {
@@ -104,7 +177,10 @@ export async function testConnection(
   }
 }
 
-/** Reserved for future local GGUF unload (Task 8). */
+/** Releases the loaded local model. Called on app quit. */
 export async function releaseLocalModel(): Promise<void> {
-  // no-op until local backend is implemented
+  if (loadedContext) { await loadedContext.dispose(); loadedContext = null; }
+  if (loadedModel) { await loadedModel.dispose(); loadedModel = null; }
+  loadedModelId = null;
+  llamaInstance = null;
 }
