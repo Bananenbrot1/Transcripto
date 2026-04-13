@@ -22,9 +22,9 @@ export const STORE_DEFAULTS: StoreSchema = {
 ## Segments
 {{segments}}`,
   },
+  providers: [],
   summary: {
-    apiBaseUrl: 'https://openrouter.ai/api/v1',
-    apiKey: '',
+    providerId: null,
     modelId: 'anthropic/claude-sonnet-4-20250514',
     promptTemplate: `Summarize the following meeting transcript titled "{{title}}".
 Highlight key decisions, action items, and topics discussed.
@@ -33,6 +33,12 @@ Write the summary in {{language}}.
 
 {{transcript}}`,
   },
+  correction: {
+    enabled: false,
+    providerId: null,
+    modelId: '',
+  },
+  vocabulary: [],
   vad: {
     silenceThreshold: 0.015,
     silenceDurationMs: 800,

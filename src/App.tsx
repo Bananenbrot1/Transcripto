@@ -4,6 +4,7 @@ import { useModelStatus } from '@/hooks/use-model-status';
 import { useTranscription } from '@/hooks/use-transcription';
 import { useExportSettings } from '@/hooks/use-export-settings';
 import { useSummarySettings } from '@/hooks/use-summary-settings';
+import { useProviders } from '@/hooks/use-providers';
 import { useVADSettings } from '@/hooks/use-vad-settings';
 import { useStoreValue } from '@/hooks/use-store';
 import { useFileImport } from '@/hooks/use-file-import';
@@ -51,15 +52,15 @@ export function App() {
     setBodyTemplate,
   } = useExportSettings();
 
+  const providerRegistry = useProviders();
   const {
     settings: summarySettings,
-    decryptedKey: summaryDecryptedKey,
-    hasApiKey: hasSummaryApiKey,
-    setApiBaseUrl: setSummaryApiBaseUrl,
-    setApiKey: setSummaryApiKey,
+    hasProvider: hasSummaryProvider,
+    setProviderId: setSummaryProviderId,
     setModelId: setSummaryModelId,
     setPromptTemplate: setSummaryPromptTemplate,
-  } = useSummarySettings();
+  } = useSummarySettings(providerRegistry.providers);
+  const [correctionSettings] = useStoreValue('correction');
 
   const {
     settings: vadSettings,
@@ -72,6 +73,7 @@ export function App() {
 
   const {
     segments,
+    correctingIds,
     recordingState,
     recordingStartTime,
     isCapturing,
@@ -95,7 +97,11 @@ export function App() {
     dismissTranscript,
     restoreTranscript,
     appendFileSegments,
-  } = useTranscription({ language: selectedLanguage, vadOptions: vadSettings });
+  } = useTranscription({
+    language: selectedLanguage,
+    vadOptions: vadSettings,
+    correctionEnabled: correctionSettings.enabled,
+  });
 
   const {
     fileImportState,
@@ -132,7 +138,7 @@ export function App() {
     segments,
     isRecording: recordingState === 'recording',
     liveSummarySettings,
-    hasSummaryApiKey: hasSummaryApiKey,
+    hasLlmConfigured: hasSummaryProvider,
   });
   const [shortcutStatus, setShortcutStatus] = useState<Record<string, boolean>>({});
 
@@ -409,10 +415,18 @@ export function App() {
         onDownload={downloadModel}
         onComplete={handleOnboardingComplete}
         summarySettings={summarySettings}
-        summaryDecryptedKey={summaryDecryptedKey}
-        onSummaryApiBaseUrlChange={setSummaryApiBaseUrl}
-        onSummaryApiKeyChange={setSummaryApiKey}
-        onSummaryModelIdChange={setSummaryModelId}
+        summaryProviders={providerRegistry.providers}
+        onConfigureAiProvider={async ({ apiBaseUrl, apiKey, modelId }) => {
+          const encrypted = await window.electronAPI.encryptString(apiKey);
+          const created = await providerRegistry.addProvider({
+            name: 'My Provider',
+            type: 'cloud',
+            apiBaseUrl,
+            apiKey: encrypted,
+          });
+          setSummaryProviderId(created.id);
+          setSummaryModelId(modelId);
+        }}
       />
     );
   }
@@ -456,7 +470,7 @@ export function App() {
   const isFileBusy = fileImportState === 'extracting' || fileImportState === 'decoding' || fileImportState === 'transcribing';
   const showPostRecordingBar = recordingState === 'idle' && segments.length > 0 && !isFileBusy;
   const showPermissionBannerInMain = isCapturing && (systemAudioStatus === 'no-permission' || systemAudioStatus === 'failed');
-  const showLiveSplitPane = recordingState === 'recording' && liveSummarySettings.enabled && hasSummaryApiKey;
+  const showLiveSplitPane = recordingState === 'recording' && liveSummarySettings.enabled && hasSummaryProvider;
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -575,6 +589,7 @@ export function App() {
                 onRenameSpeaker={renameSpeaker}
                 onUpdateText={updateSegmentText}
                 onDeleteSegment={deleteSegment}
+                correctingIds={correctingIds}
               />
             </ResizablePanel>
             <ResizableHandle withHandle />
@@ -624,6 +639,7 @@ export function App() {
                 onRenameSpeaker={renameSpeaker}
                 onUpdateText={updateSegmentText}
                 onDeleteSegment={deleteSegment}
+                correctingIds={correctingIds}
               />
             ) : (liveSummary || summary) ? (
               <>
@@ -662,8 +678,8 @@ export function App() {
                   variant="outline"
                   size="sm"
                   onClick={handleSummarize}
-                  disabled={summaryStatus === 'loading' || !hasSummaryApiKey}
-                  title={!hasSummaryApiKey ? 'Configure API key in Settings > AI Summary' : 'Generate AI summary'}
+                  disabled={summaryStatus === 'loading' || !hasSummaryProvider}
+                  title={!hasSummaryProvider ? 'Configure a provider in Settings > Providers and assign it under AI Summary' : 'Generate AI summary'}
                 >
                   {summaryStatus === 'loading' ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -745,11 +761,12 @@ export function App() {
         onFilenameTemplateChange={setFilenameTemplate}
         onBodyTemplateChange={setBodyTemplate}
         summarySettings={summarySettings}
-        summaryDecryptedKey={summaryDecryptedKey}
-        onSummaryApiBaseUrlChange={setSummaryApiBaseUrl}
-        onSummaryApiKeyChange={setSummaryApiKey}
+        summaryProviders={providerRegistry.providers}
+        hasSummaryProvider={hasSummaryProvider}
+        onSummaryProviderIdChange={setSummaryProviderId}
         onSummaryModelIdChange={setSummaryModelId}
         onSummaryPromptTemplateChange={setSummaryPromptTemplate}
+        providerRegistry={providerRegistry}
         vadSettings={vadSettings}
         onSilenceThresholdChange={setSilenceThreshold}
         onSilenceDurationMsChange={setSilenceDurationMs}

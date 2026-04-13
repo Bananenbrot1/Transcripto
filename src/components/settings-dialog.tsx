@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon, Settings2, FileOutput, SlidersHorizontal, Keyboard, AlertCircle, X, Sparkles, Check, Loader2, Eye, EyeOff } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, Monitor, Sun, Moon, Settings2, FileOutput, SlidersHorizontal, Keyboard, AlertCircle, X, Sparkles, Boxes, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -14,13 +14,18 @@ import type { ExportSettings } from '@/hooks/use-export-settings';
 import type { SummarySettings } from '@/hooks/use-summary-settings';
 import type { VADSettings } from '@/hooks/use-vad-settings';
 import type { ModelDefinition } from '@/types/transcription';
-import type { ShortcutConfig, ShortcutAction } from '../../shared/types';
+import type { ShortcutConfig, ShortcutAction, Provider } from '../../shared/types';
+import { ProvidersTab } from '@/components/settings/providers-tab';
+import { CorrectionTab } from '@/components/settings/correction-tab';
+import type { ProviderRegistry } from '@/hooks/use-providers';
 
 type AppearanceMode = 'system' | 'light' | 'dark';
 
 const TABS = [
   { id: 'General' as const, label: 'General', icon: Settings2 },
+  { id: 'Providers' as const, label: 'Providers', icon: Boxes },
   { id: 'AI Summary' as const, label: 'AI Summary', icon: Sparkles },
+  { id: 'Correction' as const, label: 'Correction', icon: Wand2 },
   { id: 'Export' as const, label: 'Export', icon: FileOutput },
   { id: 'Shortcuts' as const, label: 'Shortcuts', icon: Keyboard },
   { id: 'Advanced' as const, label: 'Advanced', icon: SlidersHorizontal },
@@ -47,13 +52,14 @@ interface SettingsDialogProps {
   onFolderChange: (folder: string) => void;
   onFilenameTemplateChange: (template: string) => void;
   onBodyTemplateChange: (template: string) => void;
-  // Summary
+  // Summary & provider registry
   summarySettings: SummarySettings;
-  summaryDecryptedKey: string;
-  onSummaryApiBaseUrlChange: (url: string) => void;
-  onSummaryApiKeyChange: (key: string) => Promise<void>;
+  summaryProviders: Provider[];
+  hasSummaryProvider: boolean;
+  onSummaryProviderIdChange: (id: string | null) => void;
   onSummaryModelIdChange: (modelId: string) => void;
   onSummaryPromptTemplateChange: (template: string) => void;
+  providerRegistry: ProviderRegistry;
   // VAD
   vadSettings: VADSettings;
   onSilenceThresholdChange: (v: number) => void;
@@ -229,9 +235,9 @@ function ShortcutRecorder({
 
 function SummarySettingsTab({
   settings,
-  decryptedKey,
-  onApiBaseUrlChange,
-  onApiKeyChange,
+  providers,
+  hasSummaryProvider,
+  onProviderIdChange,
   onModelIdChange,
   onPromptTemplateChange,
   liveSummaryEnabled,
@@ -243,9 +249,9 @@ function SummarySettingsTab({
   onResetLiveSummaryFormatTemplate,
 }: {
   settings: SummarySettings;
-  decryptedKey: string;
-  onApiBaseUrlChange: (url: string) => void;
-  onApiKeyChange: (key: string) => Promise<void>;
+  providers: Provider[];
+  hasSummaryProvider: boolean;
+  onProviderIdChange: (id: string | null) => void;
   onModelIdChange: (modelId: string) => void;
   onPromptTemplateChange: (template: string) => void;
   liveSummaryEnabled: boolean;
@@ -256,84 +262,27 @@ function SummarySettingsTab({
   onLiveSummaryFormatTemplateChange: (template: string) => void;
   onResetLiveSummaryFormatTemplate: () => void;
 }) {
-  const [showKey, setShowKey] = useState(false);
-  const [keyInput, setKeyInput] = useState('');
-  const [keyInitialized, setKeyInitialized] = useState(false);
-  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [testError, setTestError] = useState('');
-
-  // Initialize key input from decrypted value
-  useEffect(() => {
-    if (!keyInitialized && decryptedKey !== undefined) {
-      setKeyInput(decryptedKey);
-      setKeyInitialized(true);
-    }
-  }, [decryptedKey, keyInitialized]);
-
-  const handleKeyBlur = () => {
-    if (keyInput !== decryptedKey) {
-      onApiKeyChange(keyInput);
-    }
-  };
-
-  const handleTestConnection = async () => {
-    setTestStatus('testing');
-    setTestError('');
-    try {
-      const result = await window.electronAPI.testSummaryConnection();
-      if (result.success) {
-        setTestStatus('success');
-      } else {
-        setTestStatus('error');
-        setTestError(result.error || 'Unknown error');
-      }
-    } catch (err) {
-      setTestStatus('error');
-      setTestError((err as Error).message);
-    }
-  };
-
   return (
     <>
       <section className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="summary-base-url">API Base URL</Label>
-          <Input
-            id="summary-base-url"
-            value={settings.apiBaseUrl}
-            onChange={(e) => onApiBaseUrlChange(e.target.value)}
-            placeholder="https://openrouter.ai/api/v1"
-          />
-          <p className="text-xs text-muted-foreground">
-            OpenAI-compatible endpoint (OpenRouter, LiteLLM, etc.)
-          </p>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="summary-api-key">API Key</Label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Input
-                id="summary-api-key"
-                type={showKey ? 'text' : 'password'}
-                value={keyInput}
-                onChange={(e) => setKeyInput(e.target.value)}
-                onBlur={handleKeyBlur}
-                placeholder="sk-..."
-                className="pr-9"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Stored encrypted on your machine
-          </p>
+          <Label htmlFor="summary-provider">Provider</Label>
+          <select
+            id="summary-provider"
+            value={settings.providerId ?? ''}
+            onChange={(e) => onProviderIdChange(e.target.value || null)}
+            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">— Select provider —</option>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {providers.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Add a provider first in the Providers tab.
+            </p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -359,31 +308,8 @@ function SummarySettingsTab({
             className="font-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
-            Available: {'{{transcript}}'}, {'{{title}}'}
+            Available: {'{{transcript}}'}, {'{{title}}'}, {'{{language}}'}
           </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleTestConnection}
-            disabled={testStatus === 'testing' || !keyInput}
-          >
-            {testStatus === 'testing' && <Loader2 className="size-3.5 animate-spin" />}
-            {testStatus === 'success' && <Check className="size-3.5 text-green-600" />}
-            {testStatus === 'error' && <AlertCircle className="size-3.5 text-destructive" />}
-            {testStatus === 'idle' && <Sparkles className="size-3.5" />}
-            Test Connection
-          </Button>
-          {testStatus === 'success' && (
-            <span className="text-xs text-green-600 font-medium">Connected successfully</span>
-          )}
-          {testStatus === 'error' && (
-            <span className="text-xs text-destructive font-medium truncate max-w-[250px]" title={testError}>
-              {testError}
-            </span>
-          )}
         </div>
       </section>
 
@@ -393,8 +319,8 @@ function SummarySettingsTab({
           <div className="space-y-0.5">
             <Label htmlFor="live-summary-enabled">Enable live notes during recording</Label>
             <p className="text-xs text-muted-foreground">
-              {!decryptedKey
-                ? 'Requires an API key to be configured above'
+              {!hasSummaryProvider
+                ? 'Select a provider in the Providers tab and assign it here'
                 : 'Automatically generate and update meeting notes while recording'}
             </p>
           </div>
@@ -402,7 +328,7 @@ function SummarySettingsTab({
             id="live-summary-enabled"
             checked={liveSummaryEnabled}
             onCheckedChange={onLiveSummaryEnabledChange}
-            disabled={!decryptedKey}
+            disabled={!hasSummaryProvider}
           />
         </div>
 
@@ -475,11 +401,12 @@ export function SettingsDialog({
   onFilenameTemplateChange,
   onBodyTemplateChange,
   summarySettings,
-  summaryDecryptedKey,
-  onSummaryApiBaseUrlChange,
-  onSummaryApiKeyChange,
+  summaryProviders,
+  hasSummaryProvider,
+  onSummaryProviderIdChange,
   onSummaryModelIdChange,
   onSummaryPromptTemplateChange,
+  providerRegistry,
   vadSettings,
   onSilenceThresholdChange,
   onSilenceDurationMsChange,
@@ -631,12 +558,14 @@ export function SettingsDialog({
             </>
           )}
 
+          {activeTab === 'Providers' && <ProvidersTab registry={providerRegistry} />}
+
           {activeTab === 'AI Summary' && (
             <SummarySettingsTab
               settings={summarySettings}
-              decryptedKey={summaryDecryptedKey}
-              onApiBaseUrlChange={onSummaryApiBaseUrlChange}
-              onApiKeyChange={onSummaryApiKeyChange}
+              providers={summaryProviders}
+              hasSummaryProvider={hasSummaryProvider}
+              onProviderIdChange={onSummaryProviderIdChange}
               onModelIdChange={onSummaryModelIdChange}
               onPromptTemplateChange={onSummaryPromptTemplateChange}
               liveSummaryEnabled={liveSummaryEnabled}
@@ -648,6 +577,8 @@ export function SettingsDialog({
               onResetLiveSummaryFormatTemplate={onResetLiveSummaryFormatTemplate}
             />
           )}
+
+          {activeTab === 'Correction' && <CorrectionTab providers={summaryProviders} />}
 
           {activeTab === 'Export' && (
             <>

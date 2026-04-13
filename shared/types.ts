@@ -109,22 +109,60 @@ export interface ShortcutConfig {
   toggleMicMute: string | null;
 }
 
+export type ProviderType = 'cloud' | 'ollama' | 'local';
+
+export interface Provider {
+  id: string;
+  name: string;
+  type: ProviderType;
+  apiBaseUrl?: string;
+  apiKey?: string;
+  ollamaBaseUrl?: string;
+  localModelId?: string;
+}
+
+export interface TaskConfig {
+  enabled: boolean;
+  providerId: string | null;
+  modelId: string;
+}
+
+export interface LlmModelDefinition {
+  id: string;
+  fileName: string;
+  sizeMB: number;
+  label: string;
+  tier: 'fastest' | 'balanced' | 'quality' | 'power';
+  url: string;
+}
+
+export interface LlmDownloadProgress extends DownloadProgress {
+  modelId: string;
+}
+
+export type ChatMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+};
+
 export interface StoreSchema {
   model: string;
   language: string;
   onboardingComplete: boolean;
-  darkMode: boolean | null; // null = follow system
+  darkMode: boolean | null;
   export: {
     folder: string;
     filenameTemplate: string;
     bodyTemplate: string;
   };
+  providers: Provider[];
   summary: {
-    apiBaseUrl: string;
-    apiKey: string;       // encrypted via safeStorage
+    providerId: string | null;
     modelId: string;
     promptTemplate: string;
   };
+  correction: TaskConfig;
+  vocabulary: string[];
   vad: {
     silenceThreshold: number;
     silenceDurationMs: number;

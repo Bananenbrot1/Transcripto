@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, shell, dialog, globalShortcut } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import * as crypto from 'node:crypto';
 import * as modelManager from './services/model-manager.js';
 import * as whisperService from './services/whisper-service.js';
 import * as parakeetService from './services/parakeet-service.js';
@@ -10,9 +11,13 @@ import * as diarizationService from './services/diarization-service.js';
 import * as audioFileService from './services/audio-file-service.js';
 import * as settingsStore from './services/settings-store.js';
 import * as summaryService from './services/summary-service.js';
+import * as llmService from './services/llm-service.js';
+import * as llmModelManager from './services/llm-model-manager.js';
+import * as correctionService from './services/correction-service.js';
+import * as cryptoUtils from './services/crypto-utils.js';
 import * as videoExtractService from './services/video-extract-service.js';
 import * as updateService from './services/update-service.js';
-import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine } from '../shared/types.js';
+import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine, Provider } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
 
@@ -199,11 +204,11 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('encrypt-string', (_event, plaintext: string) => {
-    return summaryService.encryptString(plaintext);
+    return cryptoUtils.encryptString(plaintext);
   });
 
   ipcMain.handle('decrypt-string', (_event, encrypted: string) => {
-    return summaryService.decryptString(encrypted);
+    return cryptoUtils.decryptString(encrypted);
   });
 
   ipcMain.handle('test-summary-connection', async () => {
@@ -310,6 +315,53 @@ function registerIpcHandlers(): void {
   ipcMain.on('quit-and-install', () => {
     updateService.quitAndInstall();
   });
+
+  ipcMain.handle('get-providers', () => settingsStore.get('providers'));
+
+  ipcMain.handle('add-provider', (_event, providerData: Omit<Provider, 'id'>) => {
+    const newProvider: Provider = { ...providerData, id: crypto.randomUUID() };
+    const providers = settingsStore.get('providers');
+    settingsStore.set('providers', [...providers, newProvider]);
+    return newProvider;
+  });
+
+  ipcMain.handle('update-provider', (_event, provider: Provider) => {
+    const providers = settingsStore.get('providers');
+    settingsStore.set('providers', providers.map((p) => (p.id === provider.id ? provider : p)));
+  });
+
+  ipcMain.handle('delete-provider', (_event, id: string) => {
+    const providers = settingsStore.get('providers');
+    settingsStore.set('providers', providers.filter((p) => p.id !== id));
+  });
+
+  ipcMain.handle('test-provider', async (_event, provider: Provider) => {
+    return llmService.testConnection(provider);
+  });
+
+  ipcMain.handle('ollama-list-models', async (_event, ollamaBaseUrl: string) => {
+    return llmService.ollamaListModels(ollamaBaseUrl);
+  });
+
+  ipcMain.handle('get-available-llm-models', () => llmModelManager.getAvailableLlmModels());
+
+  ipcMain.handle('get-llm-model-status', (_event, modelId: string) => ({
+    downloaded: llmModelManager.isLlmModelDownloaded(modelId),
+  }));
+
+  ipcMain.handle('download-llm-model', async (event, modelId: string) => {
+    await llmModelManager.downloadLlmModel(modelId, (progress) => {
+      event.sender.send('llm-download-progress', { ...progress, modelId });
+    });
+  });
+
+  ipcMain.handle('delete-llm-model', (_event, modelId: string) => {
+    llmModelManager.deleteLlmModel(modelId);
+  });
+
+  ipcMain.handle('correct-segment', async (_event, rawText: string) => {
+    return correctionService.correct(rawText);
+  });
 }
 
 function createWindow(): void {
@@ -373,4 +425,5 @@ app.on('before-quit', () => {
   globalShortcut.unregisterAll();
   audioFileService.cleanup();
   videoExtractService.cleanupExtractedAudio();
+  llmService.releaseLocalModel().catch(() => {});
 });

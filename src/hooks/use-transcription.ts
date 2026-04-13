@@ -14,22 +14,53 @@ export type { DiarizationState } from './use-diarization';
 interface UseTranscriptionOptions {
   language: string;
   vadOptions?: VADOptions;
+  correctionEnabled?: boolean;
 }
 
-export function useTranscription({ language, vadOptions }: UseTranscriptionOptions) {
+export function useTranscription({ language, vadOptions, correctionEnabled = false }: UseTranscriptionOptions) {
   const [segments, setSegments] = useState<TranscriptSegment[]>(() => loadSession()?.segments ?? []);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [micRMS, setMicRMS] = useState(0);
   const [systemRMS, setSystemRMS] = useState(0);
   const [recordingStartTime, setRecordingStartTime] = useState(() => loadSession()?.recordingStartTime ?? 0);
   const [speakerNames, setSpeakerNames] = useState<Record<string, string>>(() => loadSession()?.speakerNames ?? {});
+  const [correctingIds, setCorrectingIds] = useState<Set<string>>(new Set());
+
   const pendingRef = useRef(0);
   const drainResolveRef = useRef<(() => void) | null>(null);
   const segmentCounterRef = useRef(0);
   const systemSpeakerRef = useRef(1);
   const languageRef = useRef(language);
   const recordingStartTimeRef = useRef(0);
+  const correctionEnabledRef = useRef(correctionEnabled);
   languageRef.current = language;
+  correctionEnabledRef.current = correctionEnabled;
+
+  const correctSegmentAsync = useCallback((segmentId: string, rawText: string) => {
+    setCorrectingIds((prev) => new Set([...prev, segmentId]));
+
+    Promise.race([
+      window.electronAPI.correctSegment(rawText),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 2000),
+      ),
+    ])
+      .then((correctedText) => {
+        setSegments((prev) =>
+          prev.map((s) => (s.id === segmentId ? { ...s, text: correctedText } : s)),
+        );
+      })
+      .catch(() => {
+        // Silently fall back to raw Whisper text
+      })
+      .finally(() => {
+        setCorrectingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(segmentId);
+          return next;
+        });
+      });
+  }, []);
 
   const onSpeechEnd = useCallback(
     async (source: 'mic' | 'system', audioBuffer: ArrayBuffer, speechStartMs: number) => {
@@ -54,8 +85,10 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
               endTime: result.segments[result.segments.length - 1]?.t1 ?? 0,
             };
             setSegments((prev) => [...prev, newSegment]);
+            if (correctionEnabledRef.current) {
+              correctSegmentAsync(newSegment.id, result.text);
+            }
           } else {
-            // System audio: split into separate segments at speaker turns
             const newSegments: TranscriptSegment[] = [];
             let currentTexts: string[] = [];
             let groupStart = result.segments[0]?.t0 ?? 0;
@@ -64,7 +97,6 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
               currentTexts.push(seg.text);
 
               if (seg.speakerTurn) {
-                // Emit accumulated segment for current speaker
                 newSegments.push({
                   id: `seg-${++segmentCounterRef.current}`,
                   source,
@@ -75,14 +107,12 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
                   startTime: groupStart,
                   endTime: seg.t1,
                 });
-                // Toggle speaker
                 systemSpeakerRef.current = systemSpeakerRef.current === 1 ? 2 : 1;
                 currentTexts = [];
                 groupStart = seg.t1;
               }
             }
 
-            // Emit remaining text
             if (currentTexts.length > 0) {
               const joinedText = currentTexts.join(' ').trim();
               if (joinedText) {
@@ -102,6 +132,11 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
 
             if (newSegments.length > 0) {
               setSegments((prev) => [...prev, ...newSegments]);
+              if (correctionEnabledRef.current) {
+                for (const seg of newSegments) {
+                  correctSegmentAsync(seg.id, seg.text);
+                }
+              }
             }
           }
         }
@@ -116,21 +151,18 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
         }
       }
     },
-    [],
+    [correctSegmentAsync],
   );
 
   const onRMS = useCallback((source: AudioSource, rms: number) => {
-    if (source === 'mic') {
-      setMicRMS(rms);
-    } else {
-      setSystemRMS(rms);
-    }
+    if (source === 'mic') setMicRMS(rms);
+    else setSystemRMS(rms);
   }, []);
 
-  const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, isPaused, startCapture, stopCapture, toggleMicMute, togglePause } = useAudioCapture({
-    onSpeechEnd,
-    onRMS,
-  }, vadOptions);
+  const { isCapturing, systemAudioStatus, debugInfo, isMicMuted, isPaused, startCapture, stopCapture, toggleMicMute, togglePause } = useAudioCapture(
+    { onSpeechEnd, onRMS },
+    vadOptions,
+  );
 
   const { diarizationState, elapsedMs, checkModels, runDiarization } = useDiarization(
     recordingStartTimeRef,
@@ -147,6 +179,7 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     systemSpeakerRef.current = 1;
     setSegments([]);
     setSpeakerNames({});
+    setCorrectingIds(new Set());
     try {
       await startCapture();
     } catch (err) {
@@ -159,7 +192,6 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     setRecordingState('stopping');
     await stopCapture();
 
-    // Wait for pending transcriptions to drain (max 10s)
     if (pendingRef.current > 0) {
       await Promise.race([
         new Promise<void>((resolve) => { drainResolveRef.current = resolve; }),
@@ -190,6 +222,7 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
     setSpeakerNames({});
     setRecordingStartTime(0);
     recordingStartTimeRef.current = 0;
+    setCorrectingIds(new Set());
     window.electronAPI.cleanupAudioRecording();
   }, []);
 
@@ -207,6 +240,7 @@ export function useTranscription({ language, vadOptions }: UseTranscriptionOptio
 
   return {
     segments,
+    correctingIds,
     recordingState,
     recordingStartTime,
     isCapturing,

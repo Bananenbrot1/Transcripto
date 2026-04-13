@@ -1,63 +1,42 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useStoreValue } from './use-store';
+import type { Provider } from '../../shared/types';
 
 export interface SummarySettings {
-  apiBaseUrl: string;
-  apiKey: string;
+  providerId: string | null;
   modelId: string;
   promptTemplate: string;
 }
 
-export function useSummarySettings() {
+export function useSummarySettings(providers: Provider[]) {
   const [summaryData, setSummaryData] = useStoreValue('summary');
-  const [decryptedKey, setDecryptedKey] = useState('');
-  const [keyLoaded, setKeyLoaded] = useState(false);
 
-  // Decrypt the API key on mount / when the encrypted value changes
-  useEffect(() => {
-    if (!summaryData.apiKey) {
-      setDecryptedKey('');
-      setKeyLoaded(true);
-      return;
-    }
-    window.electronAPI.decryptString(summaryData.apiKey)
-      .then(setDecryptedKey)
-      .catch(() => setDecryptedKey(''))
-      .finally(() => setKeyLoaded(true));
-  }, [summaryData.apiKey]);
+  const hasProvider = useMemo(
+    () =>
+      summaryData.providerId !== null &&
+      providers.some((p) => p.id === summaryData.providerId),
+    [summaryData.providerId, providers],
+  );
 
-  const setApiBaseUrl = useCallback((value: string) => {
-    setSummaryData({ ...summaryData, apiBaseUrl: value });
-  }, [summaryData, setSummaryData]);
+  const setProviderId = useCallback(
+    (providerId: string | null) => setSummaryData({ ...summaryData, providerId }),
+    [summaryData, setSummaryData],
+  );
 
-  const setApiKey = useCallback(async (plaintext: string) => {
-    if (!plaintext) {
-      setSummaryData({ ...summaryData, apiKey: '' });
-      setDecryptedKey('');
-      return;
-    }
-    const encrypted = await window.electronAPI.encryptString(plaintext);
-    setSummaryData({ ...summaryData, apiKey: encrypted });
-    setDecryptedKey(plaintext);
-  }, [summaryData, setSummaryData]);
+  const setModelId = useCallback(
+    (modelId: string) => setSummaryData({ ...summaryData, modelId }),
+    [summaryData, setSummaryData],
+  );
 
-  const setModelId = useCallback((value: string) => {
-    setSummaryData({ ...summaryData, modelId: value });
-  }, [summaryData, setSummaryData]);
-
-  const setPromptTemplate = useCallback((value: string) => {
-    setSummaryData({ ...summaryData, promptTemplate: value });
-  }, [summaryData, setSummaryData]);
-
-  const hasApiKey = keyLoaded && decryptedKey.length > 0;
+  const setPromptTemplate = useCallback(
+    (promptTemplate: string) => setSummaryData({ ...summaryData, promptTemplate }),
+    [summaryData, setSummaryData],
+  );
 
   return {
     settings: summaryData,
-    decryptedKey,
-    hasApiKey,
-    keyLoaded,
-    setApiBaseUrl,
-    setApiKey,
+    hasProvider,
+    setProviderId,
     setModelId,
     setPromptTemplate,
   };
