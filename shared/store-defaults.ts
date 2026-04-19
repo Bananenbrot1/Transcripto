@@ -1,7 +1,7 @@
 import type { StoreSchema } from './types.js';
 
 export const STORE_DEFAULTS: StoreSchema = {
-  model: 'large-v3-turbo-q5',
+  model: 'parakeet-tdt-0.6b-v3',
   language: 'auto',
   onboardingComplete: false,
   darkMode: null,
