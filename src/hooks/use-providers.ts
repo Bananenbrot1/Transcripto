@@ -8,7 +8,6 @@ export interface ProviderRegistry {
   addProvider: (data: Omit<Provider, 'id'>) => Promise<Provider>;
   updateProvider: (provider: Provider) => Promise<void>;
   deleteProvider: (id: string) => Promise<void>;
-  testProvider: (provider: Provider) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export function useProviders(): ProviderRegistry {
@@ -39,12 +38,7 @@ export function useProviders(): ProviderRegistry {
     setProviders((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
-  const testProvider = useCallback(
-    (provider: Provider) => window.electronAPI.testProvider(provider),
-    [],
-  );
-
-  return { providers, loading, refresh, addProvider, updateProvider, deleteProvider, testProvider };
+  return { providers, loading, refresh, addProvider, updateProvider, deleteProvider };
 }
 
 export function useLlmModels() {

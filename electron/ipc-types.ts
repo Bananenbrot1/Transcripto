@@ -76,7 +76,6 @@ export interface ElectronAPI {
   onShortcutAction: (callback: (action: ShortcutAction) => void) => () => void;
   encryptString: (plaintext: string) => Promise<string>;
   decryptString: (encrypted: string) => Promise<string>;
-  testSummaryConnection: () => Promise<{ success: boolean; error?: string }>;
   summarize: (transcript: string, title: string) => Promise<SummaryResult>;
   liveSummarize: (request: LiveSummarizeRequest) => Promise<SummaryResult>;
   transcribeFile: (audioBuffer: ArrayBuffer, language: string, totalDurationSec: number) => Promise<TranscribeResult>;
@@ -98,7 +97,6 @@ export interface ElectronAPI {
   addProvider: (provider: Omit<Provider, 'id'>) => Promise<Provider>;
   updateProvider: (provider: Provider) => Promise<void>;
   deleteProvider: (id: string) => Promise<void>;
-  testProvider: (provider: Provider) => Promise<{ ok: boolean; error?: string }>;
   ollamaListModels: (ollamaBaseUrl: string) => Promise<string[]>;
 
   getAvailableLlmModels: () => Promise<LlmModelDefinition[]>;

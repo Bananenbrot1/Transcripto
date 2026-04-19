@@ -211,10 +211,6 @@ function registerIpcHandlers(): void {
     return cryptoUtils.decryptString(encrypted);
   });
 
-  ipcMain.handle('test-summary-connection', async () => {
-    return summaryService.testConnection();
-  });
-
   ipcMain.handle('summarize', async (_event, transcript: string, title: string) => {
     return summaryService.summarize(transcript, title);
   });
@@ -333,10 +329,6 @@ function registerIpcHandlers(): void {
   ipcMain.handle('delete-provider', (_event, id: string) => {
     const providers = settingsStore.get('providers');
     settingsStore.set('providers', providers.filter((p) => p.id !== id));
-  });
-
-  ipcMain.handle('test-provider', async (_event, provider: Provider) => {
-    return llmService.testConnection(provider);
   });
 
   ipcMain.handle('ollama-list-models', async (_event, ollamaBaseUrl: string) => {

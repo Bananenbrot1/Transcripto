@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Plus, Pencil, Trash2, Check, AlertCircle, Loader2, Download, HardDrive } from 'lucide-react';
+import { Plus, Pencil, Trash2, Download, HardDrive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,7 +8,6 @@ import type { Provider, ProviderType } from '../../../shared/types';
 
 const BUILTIN_LOCAL_MODEL_ID = 'smollm2-360m-q4';
 
-type TestStatus = 'idle' | 'testing' | 'ok' | 'error';
 
 function ProviderTypeBadge({ type }: { type: ProviderType }) {
   const styles: Record<ProviderType, string> = {
@@ -225,22 +224,8 @@ function ProviderForm({
 }
 
 export function ProvidersTab({ registry }: { registry: ProviderRegistry }) {
-  const { providers, addProvider, updateProvider, deleteProvider, testProvider } = registry;
+  const { providers, addProvider, updateProvider, deleteProvider } = registry;
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
-  const [testStatus, setTestStatus] = useState<Record<string, TestStatus>>({});
-  const [testErrors, setTestErrors] = useState<Record<string, string>>({});
-
-  const handleTest = useCallback(async (provider: Provider) => {
-    setTestStatus((prev) => ({ ...prev, [provider.id]: 'testing' }));
-    try {
-      const result = await testProvider(provider);
-      setTestStatus((prev) => ({ ...prev, [provider.id]: result.ok ? 'ok' : 'error' }));
-      if (!result.ok) setTestErrors((prev) => ({ ...prev, [provider.id]: result.error ?? 'Unknown error' }));
-    } catch (err) {
-      setTestStatus((prev) => ({ ...prev, [provider.id]: 'error' }));
-      setTestErrors((prev) => ({ ...prev, [provider.id]: (err as Error).message }));
-    }
-  }, [testProvider]);
 
   const handleSave = useCallback(async (data: Omit<Provider, 'id'> & { id?: string }) => {
     if (data.id) {
@@ -270,26 +255,8 @@ export function ProvidersTab({ registry }: { registry: ProviderRegistry }) {
                   <span className="text-sm font-medium truncate">{p.name}</span>
                   <ProviderTypeBadge type={p.type} />
                 </div>
-                {testStatus[p.id] === 'error' && (
-                  <p className="text-xs text-destructive truncate mt-0.5">{testErrors[p.id]}</p>
-                )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  type="button"
-                  onClick={() => void handleTest(p)}
-                  disabled={testStatus[p.id] === 'testing'}
-                  title="Test connection"
-                >
-                  {testStatus[p.id] === 'testing' && <Loader2 className="size-3 animate-spin" />}
-                  {testStatus[p.id] === 'ok' && <Check className="size-3 text-green-600" />}
-                  {testStatus[p.id] === 'error' && <AlertCircle className="size-3 text-destructive" />}
-                  {(!testStatus[p.id] || testStatus[p.id] === 'idle') && <Check className="size-3" />}
-                  Test
-                </Button>
                 <Button variant="ghost" size="sm" className="h-7 px-2" type="button" onClick={() => setEditingId(p.id)} title="Edit">
                   <Pencil className="size-3" />
                 </Button>

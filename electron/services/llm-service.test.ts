@@ -39,7 +39,7 @@ function makeFetchError(status: number, body: string) {
 }
 
 describe('llm-service cloud backend', async () => {
-  const { complete, testConnection } = await import('./llm-service.js');
+  const { complete } = await import('./llm-service.js');
 
   const cloudProvider: Provider = {
     id: 'p1',
@@ -88,19 +88,6 @@ describe('llm-service cloud backend', async () => {
   it('throws on non-ok response', async () => {
     mockFetch.mockReturnValueOnce(makeFetchError(401, 'Unauthorized'));
     await expect(complete('p1', 'gpt-4o', [])).rejects.toThrow('API error 401');
-  });
-
-  it('testConnection returns ok:true on success', async () => {
-    mockFetch.mockReturnValueOnce(makeFetchOk('ok'));
-    const result = await testConnection(cloudProvider);
-    expect(result.ok).toBe(true);
-  });
-
-  it('testConnection returns ok:false on error', async () => {
-    mockFetch.mockReturnValueOnce(makeFetchError(403, 'Forbidden'));
-    const result = await testConnection(cloudProvider);
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain('403');
   });
 
   it('throws when provider not found', async () => {
