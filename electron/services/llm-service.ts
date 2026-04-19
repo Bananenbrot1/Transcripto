@@ -149,34 +149,6 @@ export async function complete(
   }
 }
 
-export async function testConnection(
-  provider: Provider,
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const testMessages: ChatMessage[] = [{ role: 'user', content: 'Reply with "ok".' }];
-    switch (provider.type) {
-      case 'cloud':
-        await cloudComplete(provider, '', testMessages);
-        break;
-      case 'ollama':
-        await ollamaComplete(provider, '', testMessages);
-        break;
-      case 'local': {
-        const modelId = provider.localModelId;
-        if (!modelId) return { ok: false, error: 'No model configured for this provider' };
-        if (!llmModelManager.isLlmModelDownloaded(modelId)) {
-          return { ok: false, error: 'Model not downloaded yet. Download it in Settings > Providers.' };
-        }
-        // Model exists — that is sufficient for a connectivity test on a local provider.
-        break;
-      }
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: (err as Error).message };
-  }
-}
-
 /** Releases the loaded local model. Called on app quit. */
 export async function releaseLocalModel(): Promise<void> {
   if (loadedContext) { await loadedContext.dispose(); loadedContext = null; }

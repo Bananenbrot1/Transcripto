@@ -39,7 +39,7 @@ function makeFetchError(status: number, body: string) {
 }
 
 describe('llm-service cloud backend', async () => {
-  const { complete, testConnection } = await import('./llm-service.js');
+  const { complete } = await import('./llm-service.js');
 
   const cloudProvider: Provider = {
     id: 'p1',
@@ -71,22 +71,23 @@ describe('llm-service cloud backend', async () => {
     );
   });
 
+  it('strips trailing slash from apiBaseUrl before appending path', async () => {
+    const providerWithSlash: Provider = { ...cloudProvider, apiBaseUrl: 'https://api.openai.com/v1/' };
+    vi.mocked(settingsStore.get).mockImplementation((key) => {
+      if (key === 'providers') return [providerWithSlash];
+      return undefined as never;
+    });
+    mockFetch.mockReturnValueOnce(makeFetchOk('Hi!'));
+    await complete('p1', 'gpt-4o', [{ role: 'user', content: 'Hi' }]);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/chat/completions',
+      expect.anything(),
+    );
+  });
+
   it('throws on non-ok response', async () => {
     mockFetch.mockReturnValueOnce(makeFetchError(401, 'Unauthorized'));
     await expect(complete('p1', 'gpt-4o', [])).rejects.toThrow('API error 401');
-  });
-
-  it('testConnection returns ok:true on success', async () => {
-    mockFetch.mockReturnValueOnce(makeFetchOk('ok'));
-    const result = await testConnection(cloudProvider);
-    expect(result.ok).toBe(true);
-  });
-
-  it('testConnection returns ok:false on error', async () => {
-    mockFetch.mockReturnValueOnce(makeFetchError(403, 'Forbidden'));
-    const result = await testConnection(cloudProvider);
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain('403');
   });
 
   it('throws when provider not found', async () => {
@@ -120,6 +121,31 @@ describe('llm-service ollama backend', async () => {
       'http://localhost:11434/v1/chat/completions',
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+
+  it('strips trailing slash from ollamaBaseUrl before appending path', async () => {
+    const providerWithSlash: Provider = { ...ollamaProvider, ollamaBaseUrl: 'http://localhost:11434/' };
+    vi.mocked(settingsStore.get).mockImplementation((key) => {
+      if (key === 'providers') return [providerWithSlash];
+      return undefined as never;
+    });
+    mockFetch.mockReturnValueOnce(makeFetchOk('Ollama response'));
+    await complete('p2', 'llama3.2', [{ role: 'user', content: 'Hello' }]);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:11434/v1/chat/completions',
+      expect.anything(),
+    );
+  });
+
+  it('ollamaListModels strips trailing slash from base URL', async () => {
+    mockFetch.mockReturnValueOnce(
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ models: [{ name: 'llama3.2' }] }),
+      } as Response),
+    );
+    await ollamaListModels('http://localhost:11434/');
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost:11434/api/tags');
   });
 
   it('ollamaListModels returns model names', async () => {

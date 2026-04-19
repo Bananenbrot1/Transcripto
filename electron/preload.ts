@@ -81,7 +81,6 @@ const api: ElectronAPI = {
 
   encryptString: (plaintext: string) => ipcRenderer.invoke('encrypt-string', plaintext),
   decryptString: (encrypted: string) => ipcRenderer.invoke('decrypt-string', encrypted),
-  testSummaryConnection: () => ipcRenderer.invoke('test-summary-connection'),
   summarize: (transcript: string, title: string) => ipcRenderer.invoke('summarize', transcript, title),
   liveSummarize: (request: LiveSummarizeRequest) => ipcRenderer.invoke('live-summarize', request),
 
@@ -128,8 +127,6 @@ const api: ElectronAPI = {
   updateProvider: (provider: Provider) => ipcRenderer.invoke('update-provider', provider),
 
   deleteProvider: (id: string) => ipcRenderer.invoke('delete-provider', id),
-
-  testProvider: (provider: Provider) => ipcRenderer.invoke('test-provider', provider),
 
   ollamaListModels: (ollamaBaseUrl: string) => ipcRenderer.invoke('ollama-list-models', ollamaBaseUrl),
 

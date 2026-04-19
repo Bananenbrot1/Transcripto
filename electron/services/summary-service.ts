@@ -12,20 +12,6 @@ function getTaskParams(): { providerId: string; modelId: string } {
   return { providerId: summary.providerId, modelId: summary.modelId };
 }
 
-export async function testConnection(): Promise<{ success: boolean; error?: string }> {
-  const summary = settingsStore.get('summary');
-  if (!summary.providerId) {
-    return { success: false, error: 'No provider configured' };
-  }
-  const providers = settingsStore.get('providers');
-  const provider = providers.find((p) => p.id === summary.providerId);
-  if (!provider) {
-    return { success: false, error: 'Configured provider not found' };
-  }
-  const result = await llmService.testConnection(provider);
-  return { success: result.ok, error: result.error };
-}
-
 export async function summarize(transcript: string, title: string): Promise<SummaryResult> {
   const { providerId, modelId } = getTaskParams();
   const settings = settingsStore.get('summary');
