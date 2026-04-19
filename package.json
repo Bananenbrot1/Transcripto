@@ -1,6 +1,6 @@
 {
   "name": "transcripto",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Transcripto Electron App",
   "type": "module",
   "main": "dist-electron/electron/main.js",
