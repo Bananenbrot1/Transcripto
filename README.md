@@ -66,6 +66,8 @@ On first launch, select and download a Whisper model. The **Large v3 Turbo** mod
 
 Transcripto needs two permissions in **System Settings > Privacy & Security**:
 
+Note (macOS Sequoia 15+): System audio capture requires the packaged app (pnpm dist). In dev mode (pnpm dev), the raw Electron binary cannot obtain System Audio Recording permission. Use pnpm dist to build and run the app.
+
 - **Microphone** — prompted automatically on first use
 - **Screen Recording** / **System Audio Recording** — required to capture audio from other apps. Add the app manually, then restart.
 
