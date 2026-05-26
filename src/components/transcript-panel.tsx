@@ -29,20 +29,29 @@ function formatDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function getSpeakerDisplayName(
+  segment: TranscriptSegment,
+  speakerNames: Record<string, string>,
+): string {
+  return segment.speakerId ? (speakerNames[segment.speakerId] ?? segment.speaker) : segment.speaker;
+}
+
 function SpeakerLabel({
   segment,
   speakerNames,
   onRenameSpeaker,
+  disableHoverOpacity,
 }: {
   segment: TranscriptSegment;
   speakerNames: Record<string, string>;
   onRenameSpeaker: (speakerId: string, name: string) => void;
+  disableHoverOpacity?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const speakerId = segment.speakerId;
-  const displayName = speakerId ? (speakerNames[speakerId] ?? segment.speaker) : segment.speaker;
+  const displayName = getSpeakerDisplayName(segment, speakerNames);
   const isFile = segment.source === 'file';
   const isMic = segment.source === 'mic';
   const colorClass = isFile ? 'text-purple-600' : isMic ? 'text-blue-600' : 'text-green-600';
@@ -86,7 +95,7 @@ function SpeakerLabel({
 
   return (
     <div
-      className={`flex items-center gap-1.5 text-xs font-medium ${colorClass} min-w-[60px] ${speakerId ? 'cursor-pointer hover:opacity-70' : ''}`}
+      className={`flex items-center gap-1.5 text-xs font-medium ${colorClass} min-w-[60px] ${speakerId ? `cursor-pointer${disableHoverOpacity ? '' : ' hover:opacity-70'}` : ''}`}
       onClick={handleClick}
       title={speakerId ? 'Click to rename speaker' : undefined}
     >
@@ -218,8 +227,8 @@ function isSameSpeakerAsPrev(
   if (index === 0) return false;
   const curr = segments[index];
   const prev = segments[index - 1];
-  const currName = curr.speakerId ? (speakerNames[curr.speakerId] ?? curr.speaker) : curr.speaker;
-  const prevName = prev.speakerId ? (speakerNames[prev.speakerId] ?? prev.speaker) : prev.speaker;
+  const currName = getSpeakerDisplayName(curr, speakerNames);
+  const prevName = getSpeakerDisplayName(prev, speakerNames);
   return currName === prevName && curr.source === prev.source;
 }
 
@@ -265,6 +274,7 @@ export function TranscriptPanel({
                     segment={segment}
                     speakerNames={speakerNames}
                     onRenameSpeaker={onRenameSpeaker}
+                    disableHoverOpacity
                   />
                 </div>
               ) : (
