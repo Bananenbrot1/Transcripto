@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useAudioCapture } from './use-audio-capture';
 import { useSessionPersistence, loadSession, clearSession } from './use-session-persistence';
 import { useDiarization } from './use-diarization';
+import { nextSpeakerId, reassignSegments } from '@/lib/speaker-utils';
 import type { VADOptions } from '@/lib/vad';
 import type {
   AudioSource,
@@ -208,6 +209,21 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
     setSpeakerNames((prev) => ({ ...prev, [speakerId]: name }));
   }, []);
 
+  const reassignSpeaker = useCallback((segmentIds: Set<string>, targetSpeakerId: string) => {
+    setSegments((prev) => reassignSegments(prev, segmentIds, targetSpeakerId));
+  }, []);
+
+  const createSpeakerAndReassign = useCallback((segmentIds: Set<string>, name: string) => {
+    setSegments((prev) => {
+      const newId = nextSpeakerId(prev);
+      const trimmed = name.trim();
+      if (trimmed) {
+        setSpeakerNames((sn) => ({ ...sn, [newId]: trimmed }));
+      }
+      return reassignSegments(prev, segmentIds, newId);
+    });
+  }, []);
+
   const updateSegmentText = useCallback((id: string, text: string) => {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, text } : s)));
   }, []);
@@ -260,6 +276,8 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
     runDiarization,
     checkDiarizationModels: checkModels,
     renameSpeaker,
+    reassignSpeaker,
+    createSpeakerAndReassign,
     updateSegmentText,
     deleteSegment,
     dismissTranscript,
