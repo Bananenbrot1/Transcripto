@@ -93,6 +93,8 @@ export function App() {
     runDiarization,
     checkDiarizationModels,
     renameSpeaker,
+    reassignSpeaker,
+    createSpeakerAndReassign,
     updateSegmentText,
     deleteSegment,
     dismissTranscript,
@@ -610,6 +612,10 @@ export function App() {
                 onUpdateText={updateSegmentText}
                 onDeleteSegment={deleteSegment}
                 correctingIds={correctingIds}
+                onReassignSpeaker={reassignSpeaker}
+                onCreateSpeakerAndReassign={createSpeakerAndReassign}
+                disableSelectMode
+                disableSelectModeReason="Stop recording to reassign speakers"
               />
             </ResizablePanel>
             <ResizableHandle withHandle />
@@ -660,6 +666,10 @@ export function App() {
                 onUpdateText={updateSegmentText}
                 onDeleteSegment={deleteSegment}
                 correctingIds={correctingIds}
+                onReassignSpeaker={reassignSpeaker}
+                onCreateSpeakerAndReassign={createSpeakerAndReassign}
+                disableSelectMode={recordingState !== 'idle'}
+                disableSelectModeReason="Stop recording to reassign speakers"
               />
             ) : (liveSummary || summary) ? (
               <>
