@@ -91,6 +91,7 @@ export function App() {
     toggleMicMute,
     togglePause,
     runDiarization,
+    checkDiarizationModels,
     renameSpeaker,
     updateSegmentText,
     deleteSegment,
@@ -119,7 +120,13 @@ export function App() {
     },
     onSegmentsBatch: appendFileSegments,
     onTitleReady: (t) => setTitle(t),
-    onComplete: () => {},
+    onComplete: () => {
+      // Bring the diarization controls into their "available" or "models-missing"
+      // state so users can run speaker analysis on the freshly imported transcript.
+      // The recording flow already triggers this in stopRecording(), but file
+      // imports went through a different code path.
+      checkDiarizationModels();
+    },
   });
 
   const [onboardingComplete, setOnboardingComplete] = useStoreValue('onboardingComplete');
@@ -145,6 +152,19 @@ export function App() {
   // Run one-time migration from localStorage on mount
   useEffect(() => {
     migrateFromLocalStorage();
+  }, []);
+
+  // When the app boots with a restored transcript (segments came back from
+  // session-persistence), bring the diarization state machine out of 'idle'
+  // so the controls render. Without this, a user who reloads/relaunches
+  // sees their old transcript but no way to trigger speaker analysis.
+  useEffect(() => {
+    if (segments.length > 0 && recordingState === 'idle') {
+      checkDiarizationModels();
+    }
+    // Run only once on mount — checkDiarizationModels is idempotent and
+    // we don't want this to refire when segments grow during a recording.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [title, setTitle] = useState('');
