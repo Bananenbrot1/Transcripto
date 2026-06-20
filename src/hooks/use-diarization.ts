@@ -36,8 +36,38 @@ export function useDiarization(
       const recStart = recordingStartTimeRef.current;
       setSegments((prev) =>
         prev.map((seg) => {
-          const relSec = (seg.speechStartMs - recStart) / 1000;
-          const match = diarSegments.find((d) => relSec >= d.start && relSec <= d.end);
+          // For file imports, segment.startTime is whisper t0 measured in
+          // milliseconds (despite the type doc saying seconds — pre-existing
+          // unit mismatch elsewhere in the file-import pipeline). For live
+          // recordings, derive seconds from the wall-clock speechStartMs
+          // relative to recordingStart.
+          const startSec = seg.source === 'file'
+            ? (seg.startTime ?? 0) / 1000
+            : (seg.speechStartMs - recStart) / 1000;
+          const endSec = seg.source === 'file'
+            ? (seg.endTime ?? seg.startTime ?? 0) / 1000
+            : startSec;
+          const midSec = (startSec + endSec) / 2;
+
+          // Prefer the sherpa segment that contains the whisper midpoint.
+          // If none does (e.g. whisper segments at t=0 sometimes precede the
+          // first sherpa detection that starts at t≈1s of voiced audio),
+          // fall back to the nearest sherpa segment by time distance.
+          let match = diarSegments.find((d) => midSec >= d.start && midSec <= d.end);
+          if (!match && diarSegments.length > 0) {
+            let bestDist = Infinity;
+            for (const d of diarSegments) {
+              const dist = midSec < d.start
+                ? d.start - midSec
+                : midSec > d.end
+                  ? midSec - d.end
+                  : 0;
+              if (dist < bestDist) {
+                bestDist = dist;
+                match = d;
+              }
+            }
+          }
           if (!match) return seg;
           return { ...seg, speaker: match.speaker, speakerId: match.speaker };
         }),
