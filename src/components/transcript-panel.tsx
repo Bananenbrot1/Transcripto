@@ -229,17 +229,37 @@ function SegmentActions({
   );
 }
 
-/** Unique speakerIds in first-appearance order. */
-function uniqueSpeakerIds(segments: TranscriptSegment[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
+/**
+ * Speakers present in the transcript, sorted by total speech-time descending.
+ * Pushes the dominant speakers to the top of the reassign picker so users
+ * scanning for "the patient" or "Dr. Reuss" don't have to skim past short
+ * over-segmentation artefacts (sherpa-onnx sometimes mints a brief Speaker
+ * for a throat-clear or crosstalk fragment).
+ *
+ * Returns `[{ id, totalMs }, ...]`. Time uses whisper t0/t1 deltas; the unit
+ * is whatever the segments carry (ms for file imports, same for live
+ * recordings) — sorting is order-stable across both since we only compare
+ * magnitudes.
+ */
+function rankedSpeakerIds(segments: TranscriptSegment[]): Array<{ id: string; totalMs: number }> {
+  const totals = new Map<string, number>();
   for (const s of segments) {
-    if (s.speakerId && !seen.has(s.speakerId)) {
-      seen.add(s.speakerId);
-      result.push(s.speakerId);
-    }
+    if (!s.speakerId) continue;
+    const dur = Math.max(0, (s.endTime ?? 0) - (s.startTime ?? 0));
+    totals.set(s.speakerId, (totals.get(s.speakerId) ?? 0) + dur);
   }
-  return result;
+  return Array.from(totals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, totalMs]) => ({ id, totalMs }));
+}
+
+/** Format a duration (whisper t0/t1 unit = ms for file imports) as "1m 23s" or "12s". */
+function formatSpeakerDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
 function ReassignPicker({
@@ -258,7 +278,7 @@ function ReassignPicker({
   onClose: () => void;
 }) {
   const [creatingNew, setCreatingNew] = useState(false);
-  const speakerIds = useMemo(() => uniqueSpeakerIds(segments), [segments]);
+  const ranked = useMemo(() => rankedSpeakerIds(segments), [segments]);
   const newInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -273,7 +293,7 @@ function ReassignPicker({
         Reassign {selectedIds.size} segment{selectedIds.size === 1 ? '' : 's'} to…
       </div>
       <div className="max-h-64 overflow-y-auto">
-        {speakerIds.map((id) => {
+        {ranked.map(({ id, totalMs }) => {
           const name = speakerNames[id];
           return (
             <button
@@ -282,7 +302,9 @@ function ReassignPicker({
               onClick={() => onPickExisting(id)}
             >
               <span className="flex-1 truncate">{name ?? id}</span>
-              {name && <span className="text-xs text-muted-foreground truncate">{id}</span>}
+              <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                {formatSpeakerDuration(totalMs)}
+              </span>
             </button>
           );
         })}
