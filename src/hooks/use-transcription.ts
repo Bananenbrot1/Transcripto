@@ -34,8 +34,10 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
   const languageRef = useRef(language);
   const recordingStartTimeRef = useRef(0);
   const correctionEnabledRef = useRef(correctionEnabled);
+  const speakerNamesRef = useRef(speakerNames);
   languageRef.current = language;
   correctionEnabledRef.current = correctionEnabled;
+  speakerNamesRef.current = speakerNames;
 
   const correctSegmentAsync = useCallback((segmentId: string, rawText: string) => {
     setCorrectingIds((prev) => new Set([...prev, segmentId]));
@@ -214,9 +216,23 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
   }, []);
 
   const createSpeakerAndReassign = useCallback((segmentIds: Set<string>, name: string) => {
+    const trimmed = name.trim();
+    // Name collision: if a speaker already carries this display name (case-
+    // insensitive), reassign onto that existing speakerId instead of minting
+    // a new one. Two doppelganger speakers with the same visible label are
+    // worse than a silent merge — the user can always split them later.
+    if (trimmed) {
+      const lower = trimmed.toLowerCase();
+      const existingId = Object.entries(speakerNamesRef.current).find(
+        ([, n]) => n.toLowerCase() === lower,
+      )?.[0];
+      if (existingId) {
+        setSegments((prev) => reassignSegments(prev, segmentIds, existingId));
+        return;
+      }
+    }
     setSegments((prev) => {
       const newId = nextSpeakerId(prev);
-      const trimmed = name.trim();
       if (trimmed) {
         setSpeakerNames((sn) => ({ ...sn, [newId]: trimmed }));
       }
