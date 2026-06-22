@@ -91,7 +91,10 @@ export function App() {
     toggleMicMute,
     togglePause,
     runDiarization,
+    checkDiarizationModels,
     renameSpeaker,
+    reassignSpeaker,
+    createSpeakerAndReassign,
     updateSegmentText,
     deleteSegment,
     dismissTranscript,
@@ -119,7 +122,13 @@ export function App() {
     },
     onSegmentsBatch: appendFileSegments,
     onTitleReady: (t) => setTitle(t),
-    onComplete: () => {},
+    onComplete: () => {
+      // Bring the diarization controls into their "available" or "models-missing"
+      // state so users can run speaker analysis on the freshly imported transcript.
+      // The recording flow already triggers this in stopRecording(), but file
+      // imports went through a different code path.
+      checkDiarizationModels();
+    },
   });
 
   const [onboardingComplete, setOnboardingComplete] = useStoreValue('onboardingComplete');
@@ -147,6 +156,19 @@ export function App() {
     migrateFromLocalStorage();
   }, []);
 
+  // When the app boots with a restored transcript (segments came back from
+  // session-persistence), bring the diarization state machine out of 'idle'
+  // so the controls render. Without this, a user who reloads/relaunches
+  // sees their old transcript but no way to trigger speaker analysis.
+  useEffect(() => {
+    if (segments.length > 0 && recordingState === 'idle') {
+      checkDiarizationModels();
+    }
+    // Run only once on mount — checkDiarizationModels is idempotent and
+    // we don't want this to refire when segments grow during a recording.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [title, setTitle] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -154,12 +176,12 @@ export function App() {
 
   const handleCopyAll = useCallback(() => {
     if (segments.length === 0) return;
-    const text = renderSegments(segments);
+    const text = renderSegments(segments, speakerNames);
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [segments]);
+  }, [segments, speakerNames]);
   const [showDebug, setShowDebug] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<'transcript' | 'summary'>(() => {
     const session = loadSession();
@@ -315,7 +337,7 @@ export function App() {
       const effectiveStartTime = fileDurationSec > 0
         ? Date.now() - fileDurationSec * 1000
         : recordingStartTime;
-      const vars = buildExportVariables(segments, title, effectiveStartTime, summary?.text);
+      const vars = buildExportVariables(segments, title, effectiveStartTime, summary?.text, speakerNames);
       const filename = applyTemplate(exportSettings.filenameTemplate, vars);
       const content = applyTemplate(exportSettings.bodyTemplate, vars);
 
@@ -337,14 +359,14 @@ export function App() {
     } finally {
       setTimeout(() => setSaveStatus('idle'), 3000);
     }
-  }, [exportSettings, segments, title, recordingStartTime, setFolder, summary, fileDurationSec]);
+  }, [exportSettings, segments, title, recordingStartTime, setFolder, summary, fileDurationSec, speakerNames]);
 
   const handleSummarize = useCallback(async () => {
     if (segments.length === 0) return;
     setSummaryStatus('loading');
     setSummaryError('');
     try {
-      const transcript = formatTranscriptForPrompt(segments);
+      const transcript = formatTranscriptForPrompt(segments, speakerNames);
       const result = await window.electronAPI.summarize(transcript, title || 'Untitled');
       setSummary(result);
       setSummaryStatus('idle');
@@ -354,7 +376,7 @@ export function App() {
       setSummaryError((err as Error).message);
       setTimeout(() => setSummaryStatus('idle'), 5000);
     }
-  }, [segments, title]);
+  }, [segments, title, speakerNames]);
 
   const handleDismiss = useCallback(() => {
     setDismissToast({ segments: [...segments], speakerNames: { ...speakerNames }, title });
@@ -590,6 +612,10 @@ export function App() {
                 onUpdateText={updateSegmentText}
                 onDeleteSegment={deleteSegment}
                 correctingIds={correctingIds}
+                onReassignSpeaker={reassignSpeaker}
+                onCreateSpeakerAndReassign={createSpeakerAndReassign}
+                disableSelectMode
+                disableSelectModeReason="Stop recording to reassign speakers"
               />
             </ResizablePanel>
             <ResizableHandle withHandle />
@@ -640,6 +666,10 @@ export function App() {
                 onUpdateText={updateSegmentText}
                 onDeleteSegment={deleteSegment}
                 correctingIds={correctingIds}
+                onReassignSpeaker={reassignSpeaker}
+                onCreateSpeakerAndReassign={createSpeakerAndReassign}
+                disableSelectMode={recordingState !== 'idle'}
+                disableSelectModeReason="Stop recording to reassign speakers"
               />
             ) : (liveSummary || summary) ? (
               <>

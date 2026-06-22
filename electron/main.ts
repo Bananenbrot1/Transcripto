@@ -222,6 +222,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('transcribe-file', async (event, audioBuffer: ArrayBuffer, language: string, totalDurationSec: number) => {
     console.log(`[main] IPC transcribe-file: lang=${language}, engine=${activeEngine}, duration=${totalDurationSec}s, byteLength=${audioBuffer?.byteLength}`);
     try {
+      // Persist the decoded samples so the diarize handler can read them later.
+      audioFileService.openImport(new Float32Array(audioBuffer));
       const service = activeEngine === 'parakeet' ? parakeetService : whisperService;
       const result = await service.transcribeFile(audioBuffer, language, totalDurationSec, (progress) => {
         event.sender.send('transcribe-file-progress', progress);
@@ -269,6 +271,8 @@ function registerIpcHandlers(): void {
       const fileBuffer = fs.readFileSync(tempWavPath);
       const { samples, durationSec } = videoExtractService.wavToFloat32(fileBuffer);
       console.log(`[main] IPC transcribe-video-file: duration=${durationSec.toFixed(1)}s, samples=${samples.length}`);
+      // Persist the decoded samples so the diarize handler can read them later.
+      audioFileService.openImport(samples);
       const service = activeEngine === 'parakeet' ? parakeetService : whisperService;
       const result = await service.transcribeFile(samples.buffer as ArrayBuffer, language, durationSec, (progress) => {
         event.sender.send('transcribe-file-progress', progress);
@@ -300,7 +304,10 @@ function registerIpcHandlers(): void {
       return raw.map((seg) => ({ ...seg }));
     } finally {
       clearInterval(interval);
-      audioFileService.cleanup();
+      // Keep the PCM around so the user can re-run analysis with a different
+      // numSpeakers parameter. The next openRecording() or openImport() call
+      // will clean up the previous session's PCM idempotently, and the
+      // explicit cleanupAudioRecording IPC fires on transcript dismiss.
     }
   });
 

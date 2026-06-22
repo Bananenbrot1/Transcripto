@@ -55,6 +55,30 @@ export function appendChunk(source: 'mic' | 'sys', buf: Buffer): void {
   }
 }
 
+/**
+ * Persist a fully decoded 16kHz mono Float32Array to the mic-session path so
+ * the existing diarize handler can read it. Used by the file-import IPC
+ * handlers (transcribe-file, transcribe-video-file) — these do not stream
+ * audio chunk-by-chunk, they have the whole buffer in hand, so we write it
+ * once and let cleanup() handle deletion when diarization finishes or the
+ * transcript is dismissed. sysPath stays empty because file imports have no
+ * system audio.
+ */
+export function openImport(samples: Float32Array): void {
+  cleanup();
+
+  const dir = getSessionDir();
+  fs.mkdirSync(dir, { recursive: true });
+
+  micPath = path.join(dir, 'mic-session.f32');
+  sysPath = '';
+
+  fs.writeFileSync(
+    micPath,
+    Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength),
+  );
+}
+
 export function closeRecording(): Promise<{ micPath: string; sysPath: string }> {
   return new Promise((resolve, reject) => {
     let pending = 0;
@@ -87,5 +111,15 @@ export function closeRecording(): Promise<{ micPath: string; sysPath: string }> 
 }
 
 export function getPaths(): { micPath: string; sysPath: string } {
-  return { micPath, sysPath };
+  // Derive paths from the deterministic session directory so they survive an
+  // Electron restart — the in-memory micPath/sysPath are reset on every
+  // process boot, but the temp PCM files may still be on disk from a prior
+  // openRecording() or openImport(). Both writers use the same filenames.
+  const dir = getSessionDir();
+  const micCandidate = path.join(dir, 'mic-session.f32');
+  const sysCandidate = path.join(dir, 'sys-session.f32');
+  return {
+    micPath: micPath || (fs.existsSync(micCandidate) ? micCandidate : ''),
+    sysPath: sysPath || (fs.existsSync(sysCandidate) ? sysCandidate : ''),
+  };
 }

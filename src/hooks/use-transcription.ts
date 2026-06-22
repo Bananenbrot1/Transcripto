@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useAudioCapture } from './use-audio-capture';
 import { useSessionPersistence, loadSession, clearSession } from './use-session-persistence';
 import { useDiarization } from './use-diarization';
+import { nextSpeakerId, reassignSegments } from '@/lib/speaker-utils';
 import type { VADOptions } from '@/lib/vad';
 import type {
   AudioSource,
@@ -33,8 +34,12 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
   const languageRef = useRef(language);
   const recordingStartTimeRef = useRef(0);
   const correctionEnabledRef = useRef(correctionEnabled);
+  const speakerNamesRef = useRef(speakerNames);
+  const segmentsRef = useRef(segments);
   languageRef.current = language;
   correctionEnabledRef.current = correctionEnabled;
+  speakerNamesRef.current = speakerNames;
+  segmentsRef.current = segments;
 
   const correctSegmentAsync = useCallback((segmentId: string, rawText: string) => {
     setCorrectingIds((prev) => new Set([...prev, segmentId]));
@@ -166,6 +171,7 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
 
   const { diarizationState, elapsedMs, checkModels, runDiarization } = useDiarization(
     recordingStartTimeRef,
+    segmentsRef,
     setSegments,
   );
 
@@ -206,6 +212,35 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
 
   const renameSpeaker = useCallback((speakerId: string, name: string) => {
     setSpeakerNames((prev) => ({ ...prev, [speakerId]: name }));
+  }, []);
+
+  const reassignSpeaker = useCallback((segmentIds: Set<string>, targetSpeakerId: string) => {
+    setSegments((prev) => reassignSegments(prev, segmentIds, targetSpeakerId));
+  }, []);
+
+  const createSpeakerAndReassign = useCallback((segmentIds: Set<string>, name: string) => {
+    const trimmed = name.trim();
+    // Name collision: if a speaker already carries this display name (case-
+    // insensitive), reassign onto that existing speakerId instead of minting
+    // a new one. Two doppelganger speakers with the same visible label are
+    // worse than a silent merge — the user can always split them later.
+    if (trimmed) {
+      const lower = trimmed.toLowerCase();
+      const existingId = Object.entries(speakerNamesRef.current).find(
+        ([, n]) => n.toLowerCase() === lower,
+      )?.[0];
+      if (existingId) {
+        setSegments((prev) => reassignSegments(prev, segmentIds, existingId));
+        return;
+      }
+    }
+    setSegments((prev) => {
+      const newId = nextSpeakerId(prev);
+      if (trimmed) {
+        setSpeakerNames((sn) => ({ ...sn, [newId]: trimmed }));
+      }
+      return reassignSegments(prev, segmentIds, newId);
+    });
   }, []);
 
   const updateSegmentText = useCallback((id: string, text: string) => {
@@ -258,7 +293,10 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
     toggleMicMute,
     togglePause,
     runDiarization,
+    checkDiarizationModels: checkModels,
     renameSpeaker,
+    reassignSpeaker,
+    createSpeakerAndReassign,
     updateSegmentText,
     deleteSegment,
     dismissTranscript,
