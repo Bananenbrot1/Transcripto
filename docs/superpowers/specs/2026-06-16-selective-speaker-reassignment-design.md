@@ -220,6 +220,15 @@ No changes to:
 
 ---
 
+## Edge Cases Handled in v1
+
+The grilling session flagged four edge cases worth addressing before shipping. All four are implemented:
+
+- **Re-running diarization no longer silently wipes manual reassignments.** `runDiarization` checks whether any segment already carries a `speakerId` and surfaces a native `window.confirm` ("Re-running speaker analysis will overwrite any manual speaker assignments you have made. Continue?"). First-time runs skip the prompt; only re-analyses prompt. Implemented via a `segmentsRef` plumbed through `useDiarization`.
+- **"+ New speaker" name collisions auto-merge.** When the inline-input name matches an existing `speakerNames` entry (trimmed, case-insensitive), the selected segments are reassigned onto the existing `speakerId` instead of minting a parallel one. Prevents indistinguishable doppelgangers in the picker. If the user actually wanted two distinct speakers with similar names, they can rename one afterwards.
+- **Mixed-format `speakerId`s.** `nextSpeakerId` now detects sherpa's `^Speaker [A-Z]$` pattern: when any existing id matches, new mints continue the alphabet ("Speaker A" → ... → "Speaker D"). Only when no sherpa-format id is present does it fall back to `speaker_N`. Past `Speaker Z` (>26 distinct clusters) the numeric scheme takes over again.
+- **Picker ranking.** `ReassignPicker` rows are sorted by total speech-time descending instead of first-appearance. Each row shows its total duration ("12m 34s") so users can spot brief over-segmentation artefacts at a glance and avoid reassigning into them.
+
 ## Out of Scope
 
 - Renaming individual segments while keeping `speakerId` (free per-segment override).
@@ -230,12 +239,3 @@ No changes to:
 - Drag-and-drop.
 - Auto-cleanup of orphaned speaker IDs.
 - Manual diarization workflows (creating a multi-speaker labeling from a non-diarized transcript).
-
-## Known Edge Cases (Deferred)
-
-Documented here so reviewers don't need to ask. None of these block v1; each is a follow-up.
-
-- **Re-running diarization wipes manual reassignments.** sherpa-onnx rewrites `speakerId` on every segment when the user clicks "Analyze speakers" a second time (e.g. to retry with a different `numSpeakers`). All manual work is silently lost — no warning, no undo, no merge. Mitigation candidates for a later PR: confirmation dialog before re-run, soft-merge that preserves user-touched segments, snapshot/restore of pre-diarization state.
-- **"+ New speaker" with a name that matches an existing speaker creates indistinguishable doppelgangers.** If the user already renamed `Speaker A` to "Dr. Reuss" via the inline rename, then mints a new speaker and types "Dr. Reuss" again, the picker and panel both render two identical-looking entries that point at different `speakerId`s. No collision check today.
-- **Mixed-format `speakerId`s in the picker.** sherpa-onnx emits identifiers like `Speaker A`, `Speaker B`; the `+ New speaker` flow mints `speaker_0`, `speaker_1`. After a few iterations the picker shows both styles side-by-side, which is cosmetically jarring and gives the user no signal about which speakers came from where.
-- **Picker has no ranking when sherpa over-segments.** If diarization returns ten or more speakers (common when `numSpeakers` is left unset and the audio has brief crosstalk or background voices), the picker is a flat first-appearance-ordered list. Hard to find the speaker who actually owns most of the conversation. A speech-time-descending sort or a "most likely" badge would help.
