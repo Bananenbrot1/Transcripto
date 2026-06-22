@@ -22,19 +22,26 @@ describe('nextSpeakerId', () => {
     expect(nextSpeakerId([seg('a', undefined)])).toBe('speaker_0');
   });
 
-  it('returns max+1 of trailing integers in speaker_N IDs', () => {
+  it('returns max+1 of trailing integers in speaker_N IDs when no sherpa format present', () => {
     const segs = [seg('a', 'speaker_0'), seg('b', 'speaker_2'), seg('c', 'speaker_1')];
     expect(nextSpeakerId(segs)).toBe('speaker_3');
   });
 
-  it('ignores IDs that do not match the speaker_N pattern', () => {
-    const segs = [seg('a', 'Speaker A'), seg('b', 'speaker_5'), seg('c', 'sherpa-onnx-7')];
-    expect(nextSpeakerId(segs)).toBe('speaker_6');
+  it('mints the next letter when sherpa-format IDs are present', () => {
+    // Sherpa labelled the conversation A/B/C — keep the picker uniform by
+    // continuing in the same format instead of introducing speaker_N.
+    const segs = [seg('a', 'Speaker A'), seg('b', 'Speaker C'), seg('c', 'Speaker B')];
+    expect(nextSpeakerId(segs)).toBe('Speaker D');
   });
 
-  it('returns speaker_0 when only non-matching IDs exist', () => {
-    const segs = [seg('a', 'Speaker A'), seg('b', 'Speaker B')];
-    expect(nextSpeakerId(segs)).toBe('speaker_0');
+  it('prefers sherpa-format letter even when speaker_N also exists', () => {
+    const segs = [seg('a', 'Speaker A'), seg('b', 'speaker_5')];
+    expect(nextSpeakerId(segs)).toBe('Speaker B');
+  });
+
+  it('falls back to speaker_N when sherpa has exhausted Z', () => {
+    const segs = [seg('a', 'Speaker Z'), seg('b', 'speaker_2')];
+    expect(nextSpeakerId(segs)).toBe('speaker_3');
   });
 });
 

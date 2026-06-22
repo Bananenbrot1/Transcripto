@@ -1,22 +1,41 @@
 import type { TranscriptSegment } from '@/types/transcription';
 
 /**
- * Pick the next available speaker_N id by scanning every segment's speakerId,
- * extracting the trailing integer from any that match `speaker_<digits>`, and
- * returning `speaker_<max+1>`. IDs in other formats (e.g. sherpa-onnx's
- * "Speaker A") are ignored for numbering — the minted ID always uses the
- * `speaker_N` form. When no matching IDs exist, returns `speaker_0`.
+ * Pick the next available speaker id. Format detection avoids visually mixing
+ * sherpa-onnx's "Speaker A" / "Speaker B" identifiers with manually-minted
+ * "speaker_N" ones in the same picker:
+ *
+ * - If any existing speakerId matches the sherpa pattern `/^Speaker [A-Z]$/`,
+ *   mint the next letter ("Speaker A" → "Speaker B" → ... → "Speaker Z").
+ * - Otherwise (no diarization yet, or only previously-minted ids exist),
+ *   mint `speaker_N` where N is one above the highest existing `speaker_<n>`.
+ *
+ * If sherpa has produced "Speaker Z" already (rare — >26 distinct clusters)
+ * the next mint falls back to the numeric scheme.
  */
 export function nextSpeakerId(segments: TranscriptSegment[]): string {
-  let max = -1;
+  let highestLetter = -1;
+  let highestNumeric = -1;
+  let sherpaFormatSeen = false;
   for (const s of segments) {
     if (!s.speakerId) continue;
-    const match = /^speaker_(\d+)$/.exec(s.speakerId);
-    if (!match) continue;
-    const n = Number.parseInt(match[1], 10);
-    if (n > max) max = n;
+    const letterMatch = /^Speaker ([A-Z])$/.exec(s.speakerId);
+    if (letterMatch) {
+      sherpaFormatSeen = true;
+      const code = letterMatch[1].charCodeAt(0) - 65; // A → 0, Z → 25
+      if (code > highestLetter) highestLetter = code;
+      continue;
+    }
+    const numericMatch = /^speaker_(\d+)$/.exec(s.speakerId);
+    if (numericMatch) {
+      const n = Number.parseInt(numericMatch[1], 10);
+      if (n > highestNumeric) highestNumeric = n;
+    }
   }
-  return `speaker_${max + 1}`;
+  if (sherpaFormatSeen && highestLetter < 25) {
+    return `Speaker ${String.fromCharCode(65 + highestLetter + 1)}`;
+  }
+  return `speaker_${highestNumeric + 1}`;
 }
 
 /**
