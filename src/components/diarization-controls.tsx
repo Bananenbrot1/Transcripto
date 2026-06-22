@@ -67,9 +67,28 @@ export function DiarizationControls({ diarizationState, onAnalyze, elapsedMs = 0
   if (diarizationState === 'idle' || diarizationState === 'done') {
     if (diarizationState === 'done') {
       return (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <CheckCircle2 className="size-3.5" />
-          Speaker analysis complete — click a speaker label to rename
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <CheckCircle2 className="size-3.5" />
+            Speaker analysis complete — click a speaker label to rename
+          </div>
+          <Input
+            type="number"
+            min={1}
+            max={20}
+            value={numSpeakersInput}
+            onChange={(e) => setNumSpeakersInput(e.target.value)}
+            placeholder="# speakers"
+            className="h-8 w-24 text-sm"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onAnalyze(parsedNumSpeakers())}
+            title="Re-runs sherpa-onnx and overwrites every segment's speakerId — manual reassignments will be lost (a confirm dialog will warn you)."
+          >
+            Re-analyze
+          </Button>
         </div>
       );
     }
