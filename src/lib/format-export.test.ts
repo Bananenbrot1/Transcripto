@@ -100,6 +100,43 @@ describe('buildExportVariables', () => {
     expect(vars.segments).toContain('Response here');
   });
 
+  it('resolves speakerNames mapping for the rendered label', () => {
+    // Segments diarised by sherpa produce speakerId "Speaker A". The user
+    // renames Speaker A to "Dr. Reuss" via the panel — the markdown export
+    // must reflect the rename, not the raw segment.speaker.
+    const diarised: TranscriptSegment[] = [
+      {
+        id: 'd-1',
+        source: 'file',
+        speaker: 'Speaker A',
+        speakerId: 'Speaker A',
+        text: 'Guten Tag',
+        timestamp: new Date('2024-06-15T10:30:15').getTime(),
+        speechStartMs: new Date('2024-06-15T10:30:15').getTime(),
+        startTime: 0,
+        endTime: 2000,
+      },
+      {
+        id: 'd-2',
+        source: 'file',
+        speaker: 'Speaker B',
+        speakerId: 'Speaker B',
+        text: 'Hallo',
+        timestamp: new Date('2024-06-15T10:30:20').getTime(),
+        speechStartMs: new Date('2024-06-15T10:30:20').getTime(),
+        startTime: 2000,
+        endTime: 4000,
+      },
+    ];
+    const vars = buildExportVariables(diarised, 'Test', Date.now(), undefined, {
+      'Speaker A': 'Dr. Reuss',
+    });
+    expect(vars.segments).toContain('**Dr. Reuss**');
+    expect(vars.segments).not.toContain('**Speaker A**');
+    // Unmapped speakers keep the bare speakerId from segment.speaker.
+    expect(vars.segments).toContain('**Speaker B**');
+  });
+
   it('calculates duration', () => {
     const startTime = Date.now() - 65000; // 65 seconds ago
     const vars = buildExportVariables(segments, 'Test', startTime);

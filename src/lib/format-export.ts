@@ -46,7 +46,27 @@ function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
-export function formatTranscriptForPrompt(segments: TranscriptSegment[]): string {
+/**
+ * Resolve a segment's display name through the rename map. Mirrors
+ * `getSpeakerDisplayName` in transcript-panel.tsx so the on-screen label,
+ * the AI summary prompt, and the markdown export all stay consistent —
+ * without this, a user who renames `Speaker A` to `Dr. Reuss` sees the
+ * rename in the panel but the export still says `**Speaker A**`.
+ */
+function resolveSpeakerName(
+  segment: TranscriptSegment,
+  speakerNames?: Record<string, string>,
+): string {
+  if (segment.speakerId && speakerNames && speakerNames[segment.speakerId]) {
+    return speakerNames[segment.speakerId];
+  }
+  return segment.speaker;
+}
+
+export function formatTranscriptForPrompt(
+  segments: TranscriptSegment[],
+  speakerNames?: Record<string, string>,
+): string {
   return segments
     .map((seg) => {
       const totalSec = Math.floor(seg.timestamp / 1000);
@@ -55,16 +75,19 @@ export function formatTranscriptForPrompt(segments: TranscriptSegment[]): string
       const s = totalSec % 60;
       const pad = (n: number) => String(n).padStart(2, '0');
       const time = `${pad(h)}:${pad(m)}:${pad(s)}`;
-      return `[${time}] ${seg.speaker}: ${seg.text}`;
+      return `[${time}] ${resolveSpeakerName(seg, speakerNames)}: ${seg.text}`;
     })
     .join('\n');
 }
 
-export function renderSegments(segments: TranscriptSegment[]): string {
+export function renderSegments(
+  segments: TranscriptSegment[],
+  speakerNames?: Record<string, string>,
+): string {
   return segments
     .map((seg) => {
       const time = formatTimestamp(seg.timestamp);
-      return `**${seg.speaker}** *${time}*\n${seg.text}`;
+      return `**${resolveSpeakerName(seg, speakerNames)}** *${time}*\n${seg.text}`;
     })
     .join('\n\n');
 }
@@ -83,6 +106,7 @@ export function buildExportVariables(
   title: string,
   recordingStartTime: number,
   summaryText?: string,
+  speakerNames?: Record<string, string>,
 ): ExportVariables {
   const now = new Date();
   const date = now.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -101,7 +125,7 @@ export function buildExportVariables(
     time,
     title: title || 'Untitled',
     duration,
-    segments: renderSegments(segments),
+    segments: renderSegments(segments, speakerNames),
     summary: summaryText ?? '',
   };
 }
