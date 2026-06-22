@@ -35,9 +35,11 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
   const recordingStartTimeRef = useRef(0);
   const correctionEnabledRef = useRef(correctionEnabled);
   const speakerNamesRef = useRef(speakerNames);
+  const segmentsRef = useRef(segments);
   languageRef.current = language;
   correctionEnabledRef.current = correctionEnabled;
   speakerNamesRef.current = speakerNames;
+  segmentsRef.current = segments;
 
   const correctSegmentAsync = useCallback((segmentId: string, rawText: string) => {
     setCorrectingIds((prev) => new Set([...prev, segmentId]));
@@ -169,6 +171,7 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
 
   const { diarizationState, elapsedMs, checkModels, runDiarization } = useDiarization(
     recordingStartTimeRef,
+    segmentsRef,
     setSegments,
   );
 

@@ -6,6 +6,7 @@ export type DiarizationState = 'idle' | 'models-missing' | 'available' | 'proces
 
 export function useDiarization(
   recordingStartTimeRef: MutableRefObject<number>,
+  segmentsRef: MutableRefObject<TranscriptSegment[]>,
   setSegments: Dispatch<SetStateAction<TranscriptSegment[]>>,
 ) {
   const [diarizationState, setDiarizationState] = useState<DiarizationState>('idle');
@@ -23,6 +24,18 @@ export function useDiarization(
   }, []);
 
   const runDiarization = useCallback(async (numSpeakers?: number) => {
+    // Guard against silently wiping manual reassignments. If any segment
+    // already carries a speakerId (from a prior diarization run plus any
+    // user reassignments on top), confirm before sherpa-onnx overwrites
+    // everything. The user can still re-run with a different numSpeakers,
+    // they just have to acknowledge that their hand-corrections are gone.
+    if (segmentsRef.current.some((s) => !!s.speakerId)) {
+      const ok = window.confirm(
+        'Re-running speaker analysis will overwrite any manual speaker assignments you have made. Continue?',
+      );
+      if (!ok) return;
+    }
+
     setDiarizationState('processing');
     setElapsedMs(0);
 
@@ -80,7 +93,7 @@ export function useDiarization(
     } finally {
       unsubscribeProgress();
     }
-  }, [recordingStartTimeRef, setSegments]);
+  }, [recordingStartTimeRef, segmentsRef, setSegments]);
 
   return {
     diarizationState,
