@@ -15,3 +15,4 @@ plans/
 .claude/
 .worktrees/
 .env*
+.pnpm-store/
