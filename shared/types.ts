@@ -134,6 +134,7 @@ export interface LlmModelDefinition {
   label: string;
   tier: 'fastest' | 'balanced' | 'quality' | 'power';
   url: string;
+  sha256?: string;
 }
 
 export interface LlmDownloadProgress extends DownloadProgress {

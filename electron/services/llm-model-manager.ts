@@ -15,6 +15,7 @@ const LLM_CATALOG: Record<string, LlmModelDefinition> = {
     label: 'SmolLM2 360M',
     tier: 'fastest',
     url: 'https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q4_K_M.gguf',
+    sha256: '2fa3f013dcdd7b99f9b237717fa0b12d75bbb89984cc1274be1471a465bac9c2',
   },
 };
 
@@ -53,5 +54,5 @@ export async function downloadLlmModel(
   const model = getLlmModelDefinition(modelId);
   const dir = getLlmModelsDir();
   fs.mkdirSync(dir, { recursive: true });
-  return downloadFile(model.url, getLlmModelPath(modelId), undefined, onProgress);
+  return downloadFile(model.url, getLlmModelPath(modelId), model.sha256, onProgress);
 }

@@ -18,6 +18,12 @@ const SEGMENTATION_DIR_NAME = 'sherpa-onnx-pyannote-segmentation-3-0';
 const EMBEDDING_FILE_NAME = '3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx';
 const TOTAL_SIZE_MB = 35;
 
+// SHA-256 of the downloaded artifacts (GitHub release assets)
+const SEGMENTATION_TAR_SHA256 =
+  '24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488';
+const EMBEDDING_SHA256 =
+  '357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b';
+
 export interface DiarizationModelStatus {
   segmentation: boolean;
   embedding: boolean;
@@ -55,7 +61,7 @@ export async function downloadDiarizationModels(
   if (!status.segmentation) {
     const tarPath = path.join(dir, SEGMENTATION_DIR_NAME + '.tar.bz2');
 
-    await downloadFile(SEGMENTATION_URL, tarPath, undefined, (p) => {
+    await downloadFile(SEGMENTATION_URL, tarPath, SEGMENTATION_TAR_SHA256, (p) => {
       onProgress?.({ phase: 'segmentation', ...p });
     });
 
@@ -69,7 +75,7 @@ export async function downloadDiarizationModels(
 
   if (!status.embedding) {
     const finalPath = getEmbeddingModelPath();
-    await downloadFile(EMBEDDING_URL, finalPath, undefined, (p) => {
+    await downloadFile(EMBEDDING_URL, finalPath, EMBEDDING_SHA256, (p) => {
       onProgress?.({ phase: 'embedding', ...p });
     });
   }
