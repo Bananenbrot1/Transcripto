@@ -3,6 +3,11 @@ import {
   sanitizeFilename,
   applyTemplate,
   buildExportVariables,
+  formatSrt,
+  formatVtt,
+  formatPlainText,
+  formatSubtitleTimestamp,
+  buildExportContent,
 } from './format-export';
 import type { TranscriptSegment } from '@/types/transcription';
 
@@ -106,3 +111,59 @@ describe('buildExportVariables', () => {
     expect(vars.duration).toMatch(/1m \d+s/);
   });
 });
+
+describe('subtitle / plain export', () => {
+  const start = 1_000_000;
+  const cues: TranscriptSegment[] = [
+    {
+      id: 'diar-0',
+      source: 'system',
+      speaker: 'Speaker A',
+      text: 'Hello',
+      timestamp: start,
+      speechStartMs: start,
+      startTime: 0,
+      endTime: 1.5,
+    },
+    {
+      id: 'diar-1',
+      source: 'system',
+      speaker: 'Speaker B',
+      text: 'Hi there',
+      timestamp: start + 1500,
+      speechStartMs: start + 1500,
+      startTime: 1.5,
+      endTime: 3,
+    },
+  ];
+
+  it('formats SRT with comma decimals', () => {
+    const srt = formatSrt(cues, start);
+    expect(srt).toContain('1\n');
+    expect(srt).toContain('00:00:00,000 --> 00:00:01,500');
+    expect(srt).toContain('Speaker A: Hello');
+    expect(srt).toContain('Speaker B: Hi there');
+  });
+
+  it('formats VTT with WEBVTT header and dot decimals', () => {
+    const vtt = formatVtt(cues, start);
+    expect(vtt.startsWith('WEBVTT\n\n')).toBe(true);
+    expect(vtt).toContain('00:00:00.000 --> 00:00:01.500');
+  });
+
+  it('formats plain text without markdown', () => {
+    expect(formatPlainText(cues)).toBe('Speaker A: Hello\n\nSpeaker B: Hi there');
+  });
+
+  it('pads subtitle timestamps', () => {
+    expect(formatSubtitleTimestamp(3661001, ',')).toBe('01:01:01,001');
+  });
+
+  it('buildExportContent picks the right extension', () => {
+    expect(buildExportContent('srt', cues, 'T', start, '').extension).toBe('srt');
+    expect(buildExportContent('vtt', cues, 'T', start, '').extension).toBe('vtt');
+    expect(buildExportContent('txt', cues, 'T', start, '').extension).toBe('txt');
+    expect(buildExportContent('md', cues, 'T', start, '# {{title}}').extension).toBe('md');
+  });
+});
+

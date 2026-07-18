@@ -9,10 +9,11 @@ import { useVADSettings } from '@/hooks/use-vad-settings';
 import { useStoreValue } from '@/hooks/use-store';
 import { useFileImport } from '@/hooks/use-file-import';
 import { useLiveSummary } from '@/hooks/use-live-summary';
-import { applyTemplate, buildExportVariables, renderSegments, formatTranscriptForPrompt } from '@/lib/format-export';
+import { applyTemplate, buildExportContent, renderSegments, formatTranscriptForPrompt, type ExportFormat } from '@/lib/format-export';
 import { LANGUAGES } from '@/lib/languages';
 import { migrateFromLocalStorage } from '@/lib/migrate-local-storage';
 import { loadSession, saveSummary } from '@/hooks/use-session-persistence';
+import { archiveSession, listSessionHistory, getSessionHistoryEntry, type SessionHistoryEntry } from '@/lib/session-history';
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
 import { ModelDownloadScreen } from '@/components/model-download-screen';
 import { SettingsDialog } from '@/components/settings-dialog';
@@ -159,6 +160,8 @@ export function App() {
   const [title, setTitle] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('md');
+  const [historyEntries, setHistoryEntries] = useState<SessionHistoryEntry[]>(() => listSessionHistory());
   const [copied, setCopied] = useState(false);
 
   const handleCopyAll = useCallback(() => {
@@ -340,20 +343,37 @@ export function App() {
       const effectiveStartTime = fileDurationSec > 0
         ? Date.now() - fileDurationSec * 1000
         : recordingStartTime;
-      const vars = buildExportVariables(segments, title, effectiveStartTime, summary?.text);
-      const filename = applyTemplate(exportSettings.filenameTemplate, vars);
-      const content = applyTemplate(exportSettings.bodyTemplate, vars);
+      const { content, extension } = buildExportContent(
+        exportFormat,
+        segments,
+        title,
+        effectiveStartTime,
+        exportSettings.bodyTemplate,
+        summary?.text,
+      );
+      const filename = applyTemplate(
+        exportSettings.filenameTemplate,
+        {
+          date: new Date().toISOString().slice(0, 10),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          title: title || 'Untitled',
+          duration: '',
+          segments: '',
+          summary: '',
+        },
+      );
 
       const result = await window.electronAPI.saveMarkdown(
         folder,
         filename,
         content,
+        extension,
       );
 
       if (result.success) {
         setSaveStatus('saved');
       } else {
-        console.error('Failed to save markdown:', result.error);
+        console.error('Failed to save export:', result.error);
         setSaveStatus('error');
       }
     } catch (err) {
@@ -362,7 +382,7 @@ export function App() {
     } finally {
       setTimeout(() => setSaveStatus('idle'), 3000);
     }
-  }, [exportSettings, segments, title, recordingStartTime, setFolder, summary, fileDurationSec]);
+  }, [exportSettings, segments, title, recordingStartTime, setFolder, summary, fileDurationSec, exportFormat]);
 
   const handleSummarize = useCallback(async () => {
     if (segments.length === 0) return;
@@ -382,6 +402,15 @@ export function App() {
   }, [segments, title]);
 
   const handleDismiss = useCallback(() => {
+    if (segments.length > 0) {
+      archiveSession({
+        title,
+        recordingStartTime,
+        segments,
+        speakerNames,
+      });
+      setHistoryEntries(listSessionHistory());
+    }
     setDismissToast({ segments: [...segments], speakerNames: { ...speakerNames }, title });
     dismissTranscript();
     setTitle('');
@@ -390,7 +419,16 @@ export function App() {
     setSummaryFromLiveNotes(false);
     setActiveMainTab('transcript');
     resetFileImport();
-  }, [dismissTranscript, segments, speakerNames, title, resetFileImport]);
+  }, [dismissTranscript, segments, speakerNames, title, recordingStartTime, resetFileImport]);
+
+  const handleRestoreHistory = useCallback((id: string) => {
+    const entry = getSessionHistoryEntry(id);
+    if (!entry) return;
+    restoreTranscript(entry.segments, entry.speakerNames);
+    setTitle(entry.title);
+    setSummary(null);
+    setActiveMainTab('transcript');
+  }, [restoreTranscript]);
 
   const handleUndoDismiss = useCallback(() => {
     if (dismissToast) {
@@ -583,6 +621,28 @@ export function App() {
             >
               <FileAudio className="size-4" />
             </Button>
+            {recordingState === 'idle' && historyEntries.length > 0 && (
+              <select
+                className="h-9 max-w-[180px] rounded-md border border-input bg-background px-2 text-xs"
+                defaultValue=""
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (id) handleRestoreHistory(id);
+                  e.target.value = '';
+                }}
+                title="Open a recent session"
+                aria-label="Recent sessions"
+              >
+                <option value="" disabled>
+                  Recent…
+                </option>
+                {historyEntries.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.title} ({entry.segmentCount})
+                  </option>
+                ))}
+              </select>
+            )}
             <Button
               variant="outline"
               size="icon"
@@ -761,6 +821,18 @@ export function App() {
               {saveStatus === 'error' && (
                 <span className="text-xs text-destructive font-medium">Save failed</span>
               )}
+              <select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                title="Export format"
+                aria-label="Export format"
+              >
+                <option value="md">Markdown</option>
+                <option value="srt">SRT</option>
+                <option value="vtt">VTT</option>
+                <option value="txt">Plain text</option>
+              </select>
               <Button
                 size="sm"
                 onClick={handleSave}

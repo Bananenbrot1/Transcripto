@@ -159,9 +159,9 @@ function registerIpcHandlers(): void {
     return result.filePaths[0];
   });
 
-  ipcMain.handle('save-markdown', (_event, folderPath: string, filename: string, content: string) => {
-    console.log(`[main] IPC save-markdown: folder="${folderPath}", filename="${filename}", contentLen=${content.length}`);
-    const result = markdownExport.saveMarkdown(folderPath, filename, content);
+  ipcMain.handle('save-markdown', (_event, folderPath: string, filename: string, content: string, extension?: string) => {
+    console.log(`[main] IPC save-markdown: folder="${folderPath}", filename="${filename}", ext=${extension ?? 'md'}, contentLen=${content.length}`);
+    const result = markdownExport.saveTextFile(folderPath, filename, content, extension ?? 'md');
     console.log(`[main] IPC save-markdown result:`, result);
     return result;
   });

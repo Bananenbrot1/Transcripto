@@ -11,7 +11,12 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[<>:"/\\|?*]/g, '').trim();
 }
 
-export function saveMarkdown(folderPath: string, filename: string, content: string): SaveResult {
+export function saveTextFile(
+  folderPath: string,
+  filename: string,
+  content: string,
+  extension: string = 'md',
+): SaveResult {
   try {
     const resolved = path.resolve(folderPath);
     if (!path.isAbsolute(resolved) || resolved !== path.normalize(resolved)) {
@@ -23,9 +28,11 @@ export function saveMarkdown(folderPath: string, filename: string, content: stri
       return { success: false, error: 'Invalid filename' };
     }
 
+    const safeExt = sanitizeFilename(extension.replace(/^\./, '')) || 'md';
+
     fs.mkdirSync(resolved, { recursive: true });
 
-    const filePath = path.join(resolved, `${safeName}.md`);
+    const filePath = path.join(resolved, `${safeName}.${safeExt}`);
 
     // Guard against path traversal: the resolved file path must stay inside
     // the user-chosen folder, even after joining with the sanitized name.
@@ -39,4 +46,8 @@ export function saveMarkdown(folderPath: string, filename: string, content: stri
   } catch (err) {
     return { success: false, error: (err as Error).message };
   }
+}
+
+export function saveMarkdown(folderPath: string, filename: string, content: string): SaveResult {
+  return saveTextFile(folderPath, filename, content, 'md');
 }

@@ -68,7 +68,12 @@ export interface ElectronAPI {
   openScreenPermissionSettings: () => Promise<void>;
   getAppInfo: () => Promise<{ appName: string; appPath: string; isPackaged: boolean }>;
   selectExportFolder: () => Promise<string | null>;
-  saveMarkdown: (folderPath: string, filename: string, content: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  saveMarkdown: (
+    folderPath: string,
+    filename: string,
+    content: string,
+    extension?: string,
+  ) => Promise<{ success: boolean; filePath?: string; error?: string }>;
   checkDiarizationModels: () => Promise<{ segmentation: boolean; embedding: boolean; totalSizeMB: number }>;
   downloadDiarizationModels: () => Promise<void>;
   onDiarizationDownloadProgress: (cb: (p: DiarizationDownloadProgress) => void) => () => void;

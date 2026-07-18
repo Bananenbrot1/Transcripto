@@ -105,3 +105,102 @@ export function buildExportVariables(
     summary: summaryText ?? '',
   };
 }
+
+export type ExportFormat = 'md' | 'srt' | 'vtt' | 'txt';
+
+export function formatSubtitleTimestamp(ms: number, decimalSep: ',' | '.'): string {
+  const clamped = Math.max(0, Math.round(ms));
+  const hours = Math.floor(clamped / 3_600_000);
+  const minutes = Math.floor((clamped % 3_600_000) / 60_000);
+  const seconds = Math.floor((clamped % 60_000) / 1000);
+  const millis = clamped % 1000;
+  const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}${decimalSep}${pad(millis, 3)}`;
+}
+
+/** Cue range for a segment on the recording timeline (ms from recording start). */
+export function segmentCueMs(
+  seg: TranscriptSegment,
+  recordingStartTime: number,
+  next?: TranscriptSegment,
+): { startMs: number; endMs: number } {
+  // Diarized segments store absolute seconds on the recording timeline.
+  if (seg.id.startsWith('diar-') && seg.endTime > seg.startTime) {
+    return { startMs: seg.startTime * 1000, endMs: seg.endTime * 1000 };
+  }
+
+  const startMs = Math.max(0, seg.speechStartMs - recordingStartTime);
+  if (next) {
+    const nextStart = Math.max(0, next.speechStartMs - recordingStartTime);
+    if (nextStart > startMs) return { startMs, endMs: nextStart };
+  }
+
+  let dur = seg.endTime - seg.startTime;
+  if (dur > 0) {
+    // whisper.cpp bindings often emit centiseconds; treat large deltas as such.
+    const durMs = dur > 600 ? dur * 10 : dur * 1000;
+    return { startMs, endMs: startMs + Math.max(500, durMs) };
+  }
+  return { startMs, endMs: startMs + 2000 };
+}
+
+export function formatPlainText(segments: TranscriptSegment[]): string {
+  return segments.map((seg) => `${seg.speaker}: ${seg.text}`).join('\n\n');
+}
+
+export function formatSrt(
+  segments: TranscriptSegment[],
+  recordingStartTime: number,
+): string {
+  return segments
+    .map((seg, i) => {
+      const { startMs, endMs } = segmentCueMs(seg, recordingStartTime, segments[i + 1]);
+      return [
+        String(i + 1),
+        `${formatSubtitleTimestamp(startMs, ',')} --> ${formatSubtitleTimestamp(endMs, ',')}`,
+        `${seg.speaker}: ${seg.text}`,
+        '',
+      ].join('\n');
+    })
+    .join('\n');
+}
+
+export function formatVtt(
+  segments: TranscriptSegment[],
+  recordingStartTime: number,
+): string {
+  const body = segments
+    .map((seg, i) => {
+      const { startMs, endMs } = segmentCueMs(seg, recordingStartTime, segments[i + 1]);
+      return [
+        `${formatSubtitleTimestamp(startMs, '.')} --> ${formatSubtitleTimestamp(endMs, '.')}`,
+        `${seg.speaker}: ${seg.text}`,
+        '',
+      ].join('\n');
+    })
+    .join('\n');
+  return `WEBVTT\n\n${body}`;
+}
+
+export function buildExportContent(
+  format: ExportFormat,
+  segments: TranscriptSegment[],
+  title: string,
+  recordingStartTime: number,
+  bodyTemplate: string,
+  summaryText?: string,
+): { content: string; extension: string } {
+  switch (format) {
+    case 'srt':
+      return { content: formatSrt(segments, recordingStartTime), extension: 'srt' };
+    case 'vtt':
+      return { content: formatVtt(segments, recordingStartTime), extension: 'vtt' };
+    case 'txt':
+      return { content: formatPlainText(segments), extension: 'txt' };
+    case 'md':
+    default: {
+      const vars = buildExportVariables(segments, title, recordingStartTime, summaryText);
+      return { content: applyTemplate(bodyTemplate, vars), extension: 'md' };
+    }
+  }
+}

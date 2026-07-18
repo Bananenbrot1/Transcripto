@@ -46,8 +46,8 @@ const api: ElectronAPI = {
 
   selectExportFolder: () => ipcRenderer.invoke('select-folder'),
 
-  saveMarkdown: (folderPath: string, filename: string, content: string) =>
-    ipcRenderer.invoke('save-markdown', folderPath, filename, content),
+  saveMarkdown: (folderPath: string, filename: string, content: string, extension?: string) =>
+    ipcRenderer.invoke('save-markdown', folderPath, filename, content, extension),
 
   checkDiarizationModels: () => ipcRenderer.invoke('check-diarization-models'),
 
