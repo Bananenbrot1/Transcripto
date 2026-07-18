@@ -83,9 +83,17 @@ export function useModelStatus() {
   }, [refreshDownloadedModels]);
 
   const changeModel = useCallback(async () => {
-    await window.electronAPI.releaseWhisper();
-    setStatus((s) => ({ ...s, whisperReady: false, modelReady: false, downloaded: false }));
-    await refreshDownloadedModels();
+    try {
+      await window.electronAPI.releaseWhisper();
+      setStatus((s) => ({ ...s, whisperReady: false, modelReady: false, downloaded: false, error: null }));
+      await refreshDownloadedModels();
+    } catch (err) {
+      setStatus((s) => ({
+        ...s,
+        error: err instanceof Error ? err.message : 'Could not release the current model',
+      }));
+      throw err;
+    }
   }, [refreshDownloadedModels]);
 
   return {

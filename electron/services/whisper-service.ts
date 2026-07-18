@@ -183,6 +183,11 @@ export function isMicContextBusy(): boolean {
   return micQueueDepth > 0;
 }
 
+/** True if either mic or system queue has in-flight / waiting work. */
+export function isBusy(): boolean {
+  return micQueueDepth > 0 || sysQueueDepth > 0;
+}
+
 const FILE_TRANSCRIBE_TIMEOUT_MS = 600_000; // 10 minutes
 
 export async function transcribeFile(

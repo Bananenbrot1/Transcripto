@@ -22,8 +22,19 @@ import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest,
 const __dirname = import.meta.dirname;
 
 let activeEngine: ModelEngine | null = null;
+let mainWindow: BrowserWindow | null = null;
+/** When true, window close / app quit proceeds without asking the renderer. */
+let allowClose = false;
+/** Distinguishes Cmd+Q (quit) from the window close button. */
+let quitRequested = false;
 
 const isDev = !app.isPackaged;
+
+function isActiveEngineBusy(): boolean {
+  if (activeEngine === 'parakeet') return parakeetService.isBusy();
+  if (activeEngine === 'whisper') return whisperService.isBusy();
+  return false;
+}
 
 function registerIpcHandlers(): void {
   ipcMain.handle('get-available-models', () => {
@@ -54,6 +65,9 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('initialize-whisper', async (_event, modelId: string) => {
+    if (isActiveEngineBusy()) {
+      throw new Error('Cannot switch models while transcription is in progress');
+    }
     const modelDef = modelManager.getModelDefinition(modelId);
     const modelPath = modelManager.getModelPath(modelId);
 
@@ -86,12 +100,26 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('release-whisper', async () => {
+    if (isActiveEngineBusy()) {
+      throw new Error('Cannot release STT engine while transcription is in progress');
+    }
     if (activeEngine === 'parakeet') {
       await parakeetService.release();
     } else {
       await whisperService.release();
     }
     activeEngine = null;
+  });
+
+  ipcMain.handle('proceed-close', () => {
+    allowClose = true;
+    if (quitRequested) {
+      app.quit();
+      return;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.close();
+    }
   });
 
   ipcMain.handle('get-media-permissions', () => {
@@ -369,6 +397,13 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
+  mainWindow = win;
+
+  win.on('close', (e) => {
+    if (allowClose) return;
+    e.preventDefault();
+    win.webContents.send('close-requested');
+  });
 
   // Programmatic source selection with audio loopback.
   // On macOS Sequoia+, the app must be added to "System Audio Recording Only"
@@ -416,7 +451,18 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  if (!allowClose) {
+    e.preventDefault();
+    quitRequested = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('close-requested');
+    } else {
+      allowClose = true;
+      app.quit();
+    }
+    return;
+  }
   globalShortcut.unregisterAll();
   audioFileService.cleanup();
   videoExtractService.cleanupExtractedAudio();

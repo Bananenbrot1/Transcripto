@@ -26,6 +26,14 @@ const api: ElectronAPI = {
 
   releaseWhisper: () => ipcRenderer.invoke('release-whisper'),
 
+  proceedClose: () => ipcRenderer.invoke('proceed-close'),
+
+  onCloseRequested: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('close-requested', handler);
+    return () => ipcRenderer.removeListener('close-requested', handler);
+  },
+
   getMediaPermissions: () => ipcRenderer.invoke('get-media-permissions'),
 
   requestMicPermission: () => ipcRenderer.invoke('request-mic-permission'),

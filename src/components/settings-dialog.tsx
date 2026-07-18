@@ -44,6 +44,8 @@ interface SettingsDialogProps {
   onSelectLanguage: (lang: string) => void;
   onChangeModel: () => void;
   isCapturing: boolean;
+  /** True while recording or draining pending transcription — blocks model switch. */
+  isRecordingActive: boolean;
   models?: ModelDefinition[];
   downloadedModels?: Record<string, boolean>;
   onDeleteModel?: (modelId: string) => void;
@@ -393,6 +395,7 @@ export function SettingsDialog({
   onSelectLanguage,
   onChangeModel,
   isCapturing,
+  isRecordingActive,
   models,
   downloadedModels,
   onDeleteModel,
@@ -507,7 +510,8 @@ export function SettingsDialog({
                     variant="outline"
                     size="sm"
                     onClick={onChangeModel}
-                    disabled={isCapturing}
+                    disabled={isCapturing || isRecordingActive}
+                    title={isRecordingActive ? 'Finish the recording before changing models' : undefined}
                   >
                     Change model
                   </Button>

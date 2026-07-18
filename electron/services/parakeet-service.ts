@@ -189,6 +189,11 @@ export function isMicContextBusy(): boolean {
   return micQueueDepth > 0;
 }
 
+/** True if either mic or system queue has in-flight / waiting work. */
+export function isBusy(): boolean {
+  return micQueueDepth > 0 || sysQueueDepth > 0;
+}
+
 /**
  * Compute accurate t0/t1 for a chunk segment using token-level timestamps.
  * timestamps[i] is seconds relative to chunk start.

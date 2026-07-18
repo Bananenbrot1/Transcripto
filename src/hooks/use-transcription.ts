@@ -25,6 +25,8 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
   const [recordingStartTime, setRecordingStartTime] = useState(() => loadSession()?.recordingStartTime ?? 0);
   const [speakerNames, setSpeakerNames] = useState<Record<string, string>>(() => loadSession()?.speakerNames ?? {});
   const [correctingIds, setCorrectingIds] = useState<Set<string>>(new Set());
+  const [captureError, setCaptureError] = useState<string | null>(null);
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
 
   const pendingRef = useRef(0);
   const drainResolveRef = useRef<(() => void) | null>(null);
@@ -142,6 +144,12 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
         }
       } catch (err) {
         console.error(`[transcription] IPC error (${source}):`, err);
+        const message = err instanceof Error ? err.message : String(err);
+        setTranscriptionError(
+          message.includes('queue full')
+            ? `A ${source} speech segment was dropped — transcription could not keep up.`
+            : `Failed to transcribe a ${source} segment: ${message}`,
+        );
       } finally {
         pendingRef.current--;
         console.log(`[transcription] onSpeechEnd done: source=${source}, pending=${pendingRef.current}`);
@@ -171,6 +179,8 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
 
   const startRecording = useCallback(async () => {
     clearSession();
+    setCaptureError(null);
+    setTranscriptionError(null);
     setRecordingState('recording');
     const now = Date.now();
     setRecordingStartTime(now);
@@ -185,8 +195,17 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
     } catch (err) {
       console.error('Failed to start recording:', err);
       setRecordingState('idle');
+      const message = err instanceof Error ? err.message : String(err);
+      setCaptureError(
+        /permission|denied|NotAllowed/i.test(message)
+          ? 'Microphone access was denied. Allow microphone access in System Settings, then try again.'
+          : `Could not start recording: ${message}`,
+      );
     }
   }, [startCapture]);
+
+  const clearCaptureError = useCallback(() => setCaptureError(null), []);
+  const clearTranscriptionError = useCallback(() => setTranscriptionError(null), []);
 
   const stopRecording = useCallback(async () => {
     setRecordingState('stopping');
@@ -236,7 +255,7 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
     segmentCounterRef.current += newSegments.length;
   }, []);
 
-  useSessionPersistence(segments, speakerNames, recordingStartTime, recordingState !== 'idle');
+  useSessionPersistence(segments, speakerNames, recordingStartTime);
 
   return {
     segments,
@@ -253,6 +272,10 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
     diarizationState,
     elapsedMs,
     speakerNames,
+    captureError,
+    transcriptionError,
+    clearCaptureError,
+    clearTranscriptionError,
     startRecording,
     stopRecording,
     toggleMicMute,

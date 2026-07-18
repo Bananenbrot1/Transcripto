@@ -54,6 +54,9 @@ export interface ElectronAPI {
   initializeWhisper: (modelId: string) => Promise<void>;
   transcribe: (source: 'mic' | 'system', audioBuffer: ArrayBuffer, language: string) => Promise<TranscribeResult>;
   releaseWhisper: () => Promise<void>;
+  /** Confirm the user wants to quit / close after a close-requested prompt. */
+  proceedClose: () => Promise<void>;
+  onCloseRequested: (callback: () => void) => () => void;
   getMediaPermissions: () => Promise<MediaPermissions>;
   requestMicPermission: () => Promise<boolean>;
   openScreenPermissionSettings: () => Promise<void>;

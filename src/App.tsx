@@ -98,6 +98,10 @@ export function App() {
     dismissTranscript,
     restoreTranscript,
     appendFileSegments,
+    captureError,
+    transcriptionError,
+    clearCaptureError,
+    clearTranscriptionError,
   } = useTranscription({
     language: selectedLanguage,
     vadOptions: vadSettings,
@@ -271,6 +275,22 @@ export function App() {
       }
     });
   }, [recordingState, isCapturing, handleStartRecording, stopRecording, togglePause, toggleMicMute]);
+
+  // Confirm before quitting / closing while a recording is active or draining.
+  const recordingStateRef = useRef(recordingState);
+  recordingStateRef.current = recordingState;
+  useEffect(() => {
+    return window.electronAPI.onCloseRequested(() => {
+      const busy = recordingStateRef.current !== 'idle';
+      if (busy) {
+        const ok = window.confirm(
+          'A recording is still in progress. Quit anyway? Your transcript so far has been saved and can be restored on next launch.',
+        );
+        if (!ok) return;
+      }
+      void window.electronAPI.proceedClose();
+    });
+  }, []);
 
   // Recording timer (pauses correctly by tracking accumulated time)
   const [elapsedRecording, setElapsedRecording] = useState(0);
@@ -782,8 +802,15 @@ export function App() {
         currentModel={currentModel}
         selectedLanguage={selectedLanguage}
         onSelectLanguage={setSelectedLanguage}
-        onChangeModel={() => { setSettingsOpen(false); setChangingModel(true); changeModel(); }}
+        onChangeModel={() => {
+          setSettingsOpen(false);
+          setChangingModel(true);
+          void changeModel().catch(() => {
+            setChangingModel(false);
+          });
+        }}
         isCapturing={isCapturing}
+        isRecordingActive={recordingState !== 'idle'}
         showDebug={showDebug}
         onShowDebugChange={setShowDebug}
         models={models}
@@ -815,6 +842,12 @@ export function App() {
           action={{ label: 'Undo', onClick: handleUndoDismiss }}
           onClose={() => setDismissToast(null)}
         />
+      )}
+      {captureError && (
+        <Toast message={captureError} onClose={clearCaptureError} duration={8000} />
+      )}
+      {transcriptionError && (
+        <Toast message={transcriptionError} onClose={clearTranscriptionError} duration={8000} />
       )}
     </div>
   );

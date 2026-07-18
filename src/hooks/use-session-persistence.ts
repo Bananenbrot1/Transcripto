@@ -54,31 +54,40 @@ export function saveSummary(summary: SummaryResult | null): void {
   }
 }
 
+/** Persist transcript state immediately (also used for crash/quit recovery). */
+export function persistSession(
+  segments: TranscriptSegment[],
+  speakerNames: Record<string, string>,
+  recordingStartTime: number,
+): void {
+  if (segments.length === 0) return;
+  const toStore = segments.slice(-MAX_SEGMENTS);
+  localStorage.setItem(KEY_SEGMENTS, JSON.stringify(toStore));
+  localStorage.setItem(KEY_SPEAKER_NAMES, JSON.stringify(speakerNames));
+  localStorage.setItem(KEY_RECORDING_START, String(recordingStartTime));
+}
+
 /**
- * Persists transcript state to localStorage on every change.
- * Uses a debounce so rapid segment additions only write once per 500ms.
+ * Persists transcript state to localStorage on every change, including mid-recording,
+ * so a crash or force-quit can recover the session.
+ * Debounced so rapid segment additions only write once per 500ms.
  */
 export function useSessionPersistence(
   segments: TranscriptSegment[],
   speakerNames: Record<string, string>,
   recordingStartTime: number,
-  isRecording: boolean,
 ) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRef = useRef({ segments, speakerNames, recordingStartTime });
+  latestRef.current = { segments, speakerNames, recordingStartTime };
 
   useEffect(() => {
-    // Don't persist mid-recording — wait until recording is complete so we
-    // don't write a partial session that could be confused with the last one.
-    if (isRecording) return;
     if (segments.length === 0) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       try {
-        const toStore = segments.slice(-MAX_SEGMENTS);
-        localStorage.setItem(KEY_SEGMENTS, JSON.stringify(toStore));
-        localStorage.setItem(KEY_SPEAKER_NAMES, JSON.stringify(speakerNames));
-        localStorage.setItem(KEY_RECORDING_START, String(recordingStartTime));
+        persistSession(segments, speakerNames, recordingStartTime);
       } catch (err) {
         console.warn('[session-persistence] Failed to save session:', err);
       }
@@ -87,5 +96,21 @@ export function useSessionPersistence(
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [segments, speakerNames, recordingStartTime, isRecording]);
+  }, [segments, speakerNames, recordingStartTime]);
+
+  // Flush immediately on page hide / unload (covers Electron crash paths better).
+  useEffect(() => {
+    const flush = () => {
+      try {
+        const { segments: s, speakerNames: n, recordingStartTime: t } = latestRef.current;
+        persistSession(s, n, t);
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+    };
+  }, []);
 }
