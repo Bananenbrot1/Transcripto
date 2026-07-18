@@ -17,56 +17,66 @@ const PARAKEET_LANGUAGES = [
   'sl', 'es', 'sv', 'ru', 'uk',
 ];
 
+/** Display order: recommended first, then speed/accuracy ladder, legacy last. */
+const MODEL_ORDER = [
+  'parakeet-tdt-0.6b-v3',
+  'large-v3-turbo-q5',
+  'small',
+  'base',
+  'tiny',
+  'medium',
+] as const;
+
 const MODEL_CATALOG: Record<string, ModelDefinition> = {
   'parakeet-tdt-0.6b-v3': {
     id: 'parakeet-tdt-0.6b-v3',
     fileName: PARAKEET_DIR_NAME,
     sizeMB: 640,
-    label: 'Parakeet TDT 0.6B (recommended)',
+    label: 'Parakeet TDT 0.6B (recommended) — 25 EU languages',
     engine: 'parakeet',
     supportedLanguages: PARAKEET_LANGUAGES,
     // SHA-256 of sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2 (GitHub release asset)
     sha256: '5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf',
   },
-  tiny: {
-    id: 'tiny',
-    fileName: 'ggml-tiny.bin',
-    sizeMB: 75,
-    label: 'Whisper Tiny — Fastest',
+  'large-v3-turbo-q5': {
+    id: 'large-v3-turbo-q5',
+    fileName: 'ggml-large-v3-turbo-q5_0.bin',
+    sizeMB: 547,
+    label: 'Whisper Large v3 Turbo — Multilingual (~99 langs)',
     engine: 'whisper',
-    sha256: 'be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21',
-  },
-  base: {
-    id: 'base',
-    fileName: 'ggml-base.bin',
-    sizeMB: 142,
-    label: 'Whisper Base — Fast',
-    engine: 'whisper',
-    sha256: '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe',
+    sha256: '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2',
   },
   small: {
     id: 'small',
     fileName: 'ggml-small.bin',
     sizeMB: 466,
-    label: 'Whisper Small — Balanced',
+    label: 'Whisper Small — Balanced multilingual',
     engine: 'whisper',
     sha256: '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b',
+  },
+  base: {
+    id: 'base',
+    fileName: 'ggml-base.bin',
+    sizeMB: 142,
+    label: 'Whisper Base — Fast multilingual',
+    engine: 'whisper',
+    sha256: '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe',
+  },
+  tiny: {
+    id: 'tiny',
+    fileName: 'ggml-tiny.bin',
+    sizeMB: 75,
+    label: 'Whisper Tiny — Fastest draft',
+    engine: 'whisper',
+    sha256: 'be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21',
   },
   medium: {
     id: 'medium',
     fileName: 'ggml-medium.bin',
     sizeMB: 1500,
-    label: 'Whisper Medium — Accurate',
+    label: 'Whisper Medium — Legacy (prefer Turbo)',
     engine: 'whisper',
     sha256: '6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208',
-  },
-  'large-v3-turbo-q5': {
-    id: 'large-v3-turbo-q5',
-    fileName: 'ggml-large-v3-turbo-q5_0.bin',
-    sizeMB: 547,
-    label: 'Whisper Large v3 Turbo',
-    engine: 'whisper',
-    sha256: '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2',
   },
 };
 
@@ -98,7 +108,7 @@ export function isModelDownloaded(modelId: string): boolean {
 }
 
 export function getAvailableModels(): ModelDefinition[] {
-  return Object.values(MODEL_CATALOG);
+  return MODEL_ORDER.map((id) => MODEL_CATALOG[id]).filter(Boolean);
 }
 
 export function deleteModel(modelId: string): void {

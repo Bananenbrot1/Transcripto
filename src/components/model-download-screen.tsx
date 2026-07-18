@@ -89,6 +89,11 @@ export function ModelDownloadScreen({
                 ))}
               </select>
             </label>
+            <p className="text-xs text-muted-foreground">
+              {isParakeet
+                ? 'Parakeet covers English + 24 European languages with native punctuation. Choose Whisper Turbo for other languages.'
+                : 'Whisper models support ~99 languages. Prefer Large v3 Turbo over Medium for accuracy at a smaller download.'}
+            </p>
             <label className="block text-sm font-medium">
               Language
               <select

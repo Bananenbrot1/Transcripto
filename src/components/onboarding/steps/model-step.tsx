@@ -11,10 +11,12 @@ function formatSize(mb: number) {
 }
 
 function qualityLabel(id: string): string {
-  if (id.includes('tiny')) return 'Fastest';
+  if (id.includes('tiny')) return 'Fastest draft';
   if (id.includes('base')) return 'Fast';
   if (id.includes('small')) return 'Balanced';
-  if (id.includes('medium')) return 'Accurate';
+  if (id.includes('medium')) return 'Legacy — prefer Turbo';
+  if (id.includes('turbo')) return 'Multilingual';
+  if (id.includes('parakeet')) return '25 EU languages';
   return 'Best quality';
 }
 
@@ -80,7 +82,8 @@ export function ModelStep({
                   {downloadedModels[RECOMMENDED_MODEL] && <Check className="size-3.5 text-green-500" />}
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {formatSize(recommendedModel.sizeMB)} — Fast and accurate, great for most use cases.
+                  {formatSize(recommendedModel.sizeMB)} — Best for English and European languages; native punctuation.
+                  Use Whisper Turbo if you need other languages.
                 </p>
                 <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                   <Sparkles className="size-3" />
