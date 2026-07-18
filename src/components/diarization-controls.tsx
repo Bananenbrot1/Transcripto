@@ -7,7 +7,8 @@ import type { DiarizationDownloadProgress } from '@/types/electron-api';
 
 interface DiarizationControlsProps {
   diarizationState: DiarizationState;
-  onAnalyze: (numSpeakers?: number) => void;
+  onAnalyze: (numSpeakers: number) => void;
+  onModelsReady: () => void;
   elapsedMs?: number;
 }
 
@@ -19,7 +20,20 @@ function formatElapsed(ms: number): string {
   return `${m} m ${s} s`;
 }
 
-export function DiarizationControls({ diarizationState, onAnalyze, elapsedMs = 0 }: DiarizationControlsProps) {
+/** Valid speaker counts are integers in [2, 20]. */
+export function parseNumSpeakers(input: string): number | undefined {
+  const trimmed = input.trim();
+  if (!/^\d+$/.test(trimmed)) return undefined;
+  const n = parseInt(trimmed, 10);
+  return n >= 2 && n <= 20 ? n : undefined;
+}
+
+export function DiarizationControls({
+  diarizationState,
+  onAnalyze,
+  onModelsReady,
+  elapsedMs = 0,
+}: DiarizationControlsProps) {
   const [numSpeakersInput, setNumSpeakersInput] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<DiarizationDownloadProgress | null>(null);
@@ -34,10 +48,8 @@ export function DiarizationControls({ diarizationState, onAnalyze, elapsedMs = 0
     }
   }, [diarizationState]);
 
-  const parsedNumSpeakers = (): number | undefined => {
-    const n = parseInt(numSpeakersInput, 10);
-    return n >= 1 ? n : undefined;
-  };
+  const numSpeakers = parseNumSpeakers(numSpeakersInput);
+  const canAnalyze = numSpeakers !== undefined;
 
   const handleDownload = useCallback(async () => {
     setDownloading(true);
@@ -50,10 +62,10 @@ export function DiarizationControls({ diarizationState, onAnalyze, elapsedMs = 0
 
     try {
       await window.electronAPI.downloadDiarizationModels();
-      // Models downloaded — now check status to transition to 'available'
       const status = await window.electronAPI.checkDiarizationModels();
       if (status.segmentation && status.embedding) {
-        onAnalyze(); // auto-trigger analysis after download
+        // Transition to available so the user can enter a speaker count.
+        onModelsReady();
       }
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : 'Download failed');
@@ -62,7 +74,7 @@ export function DiarizationControls({ diarizationState, onAnalyze, elapsedMs = 0
       setDownloading(false);
       setDownloadProgress(null);
     }
-  }, [onAnalyze]);
+  }, [onModelsReady]);
 
   if (diarizationState === 'idle' || diarizationState === 'done') {
     if (diarizationState === 'done') {
@@ -117,14 +129,22 @@ export function DiarizationControls({ diarizationState, onAnalyze, elapsedMs = 0
       <div className="flex items-center gap-1.5">
         <Input
           type="number"
-          min={1}
+          min={2}
           max={20}
           value={numSpeakersInput}
           onChange={(e) => setNumSpeakersInput(e.target.value)}
-          placeholder="# speakers"
-          className="h-8 w-28 text-sm"
+          placeholder="Speakers (required)"
+          aria-label="Number of speakers (required, 2–20)"
+          className="h-8 w-36 text-sm"
         />
-        <Button variant="outline" size="sm" onClick={() => onAnalyze(parsedNumSpeakers())}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!canAnalyze}
+          onClick={() => {
+            if (numSpeakers !== undefined) onAnalyze(numSpeakers);
+          }}
+        >
           <Users className="size-3.5" />
           Analyze speakers
         </Button>
@@ -151,14 +171,22 @@ export function DiarizationControls({ diarizationState, onAnalyze, elapsedMs = 0
         </span>
         <Input
           type="number"
-          min={1}
+          min={2}
           max={20}
           value={numSpeakersInput}
           onChange={(e) => setNumSpeakersInput(e.target.value)}
-          placeholder="# speakers"
-          className="h-8 w-28 text-sm"
+          placeholder="Speakers (required)"
+          aria-label="Number of speakers (required, 2–20)"
+          className="h-8 w-36 text-sm"
         />
-        <Button variant="outline" size="sm" onClick={() => onAnalyze(parsedNumSpeakers())}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!canAnalyze}
+          onClick={() => {
+            if (numSpeakers !== undefined) onAnalyze(numSpeakers);
+          }}
+        >
           Retry
         </Button>
       </div>

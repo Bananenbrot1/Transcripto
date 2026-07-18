@@ -68,7 +68,7 @@ export interface ElectronAPI {
   closeAudioRecording: () => Promise<void>;
   cleanupAudioRecording: () => Promise<void>;
   onDiarizationProgress: (cb: (p: { elapsedMs: number }) => void) => () => void;
-  diarize: (numSpeakers?: number) => Promise<DiarizationSegment[]>;
+  diarize: (numSpeakers: number) => Promise<DiarizationSegment[]>;
   storeGet: <K extends keyof StoreSchema>(key: K) => Promise<StoreSchema[K]>;
   storeSet: <K extends keyof StoreSchema>(key: K, value: StoreSchema[K]) => Promise<void>;
   storeGetAll: () => Promise<StoreSchema>;

@@ -66,7 +66,7 @@ const api: ElectronAPI = {
     return () => ipcRenderer.removeListener('diarization-progress', handler);
   },
 
-  diarize: (numSpeakers?: number) => ipcRenderer.invoke('diarize', numSpeakers),
+  diarize: (numSpeakers: number) => ipcRenderer.invoke('diarize', numSpeakers),
 
   storeGet: (key: string) => ipcRenderer.invoke('store-get', key),
   storeSet: (key: string, value: unknown) => ipcRenderer.invoke('store-set', key, value),

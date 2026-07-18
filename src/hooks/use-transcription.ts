@@ -257,6 +257,7 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
     stopRecording,
     toggleMicMute,
     togglePause,
+    checkDiarizationModels: checkModels,
     runDiarization,
     renameSpeaker,
     updateSegmentText,

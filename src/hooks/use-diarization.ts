@@ -22,7 +22,7 @@ export function useDiarization(
     }
   }, []);
 
-  const runDiarization = useCallback(async (numSpeakers?: number) => {
+  const runDiarization = useCallback(async (numSpeakers: number) => {
     setDiarizationState('processing');
     setElapsedMs(0);
 

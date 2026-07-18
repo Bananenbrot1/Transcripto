@@ -90,6 +90,7 @@ export function App() {
     stopRecording,
     toggleMicMute,
     togglePause,
+    checkDiarizationModels,
     runDiarization,
     renameSpeaker,
     updateSegmentText,
@@ -662,7 +663,12 @@ export function App() {
               placeholder="Transcript title..."
               className="h-8 flex-1 max-w-xs text-sm"
             />
-            <DiarizationControls diarizationState={diarizationState} onAnalyze={runDiarization} elapsedMs={elapsedMs} />
+            <DiarizationControls
+              diarizationState={diarizationState}
+              onAnalyze={runDiarization}
+              onModelsReady={checkDiarizationModels}
+              elapsedMs={elapsedMs}
+            />
             <div className="ml-auto flex items-center gap-2">
               <Button
                 variant="outline"

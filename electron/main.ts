@@ -283,7 +283,10 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('diarize', async (event, numSpeakers: number = -1) => {
+  ipcMain.handle('diarize', async (event, numSpeakers: number) => {
+    if (!Number.isInteger(numSpeakers) || numSpeakers < 2 || numSpeakers > 20) {
+      throw new Error('numSpeakers must be an integer between 2 and 20');
+    }
     const start = Date.now();
     const interval = setInterval(() => {
       event.sender.send('diarization-progress', { elapsedMs: Date.now() - start });
