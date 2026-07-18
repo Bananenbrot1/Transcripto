@@ -1,7 +1,10 @@
 import { workerData, parentPort } from 'node:worker_threads';
 import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { mixMicAndSystem } from './diarization-mix.js';
+
+const SAMPLE_RATE = 16000;
 
 const require = createRequire(import.meta.url);
 
@@ -60,6 +63,9 @@ async function run(): Promise<void> {
 
   const mixed = mixMicAndSystem(mic, sys, totalSamples);
 
+  const mixedPath = path.join(path.dirname(micPath), 'mixed-session.f32');
+  fs.writeFileSync(mixedPath, Buffer.from(mixed.buffer, mixed.byteOffset, mixed.byteLength));
+
   const sherpaOnnx = require('sherpa-onnx-node');
 
   // Sole entry point for OfflineSpeakerDiarization — numClusters is init-time only,
@@ -91,9 +97,11 @@ async function run(): Promise<void> {
     speaker: `Speaker ${String.fromCharCode(65 + seg.speaker)}`,
     start: seg.start,
     end: seg.end,
+    startByte: Math.floor(seg.start * SAMPLE_RATE) * 4,
+    endByte: Math.floor(seg.end * SAMPLE_RATE) * 4,
   }));
 
-  parentPort!.postMessage({ type: 'result', segments });
+  parentPort!.postMessage({ type: 'result', segments, mixedPath });
 }
 
 run().catch((err: unknown) => {

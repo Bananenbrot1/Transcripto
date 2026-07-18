@@ -73,6 +73,10 @@ export function App() {
 
   const {
     segments,
+    diarizedSegments,
+    activeView,
+    setActiveView,
+    retranscribeProgress,
     correctingIds,
     recordingState,
     recordingStartTime,
@@ -490,6 +494,7 @@ export function App() {
     : 'Unknown';
   const isFileBusy = fileImportState === 'extracting' || fileImportState === 'decoding' || fileImportState === 'transcribing';
   const showPostRecordingBar = recordingState === 'idle' && segments.length > 0 && !isFileBusy;
+  const showViewToggle = recordingState === 'idle' && diarizedSegments.length > 0 && diarizationState === 'done';
   const showPermissionBannerInMain = isCapturing && (systemAudioStatus === 'no-permission' || systemAudioStatus === 'failed');
   const showLiveSplitPane = recordingState === 'recording' && liveSummarySettings.enabled && hasSummaryProvider;
 
@@ -611,6 +616,7 @@ export function App() {
                 onUpdateText={updateSegmentText}
                 onDeleteSegment={deleteSegment}
                 correctingIds={correctingIds}
+                viewId={activeView}
               />
             </ResizablePanel>
             <ResizableHandle withHandle />
@@ -654,14 +660,42 @@ export function App() {
               </div>
             )}
             {activeMainTab === 'transcript' ? (
-              <TranscriptPanel
-                segments={segments}
-                speakerNames={speakerNames}
-                onRenameSpeaker={renameSpeaker}
-                onUpdateText={updateSegmentText}
-                onDeleteSegment={deleteSegment}
-                correctingIds={correctingIds}
-              />
+              <>
+                {showViewToggle && (
+                  <div className="shrink-0 inline-flex items-center rounded-md border p-0.5 text-sm mb-2 self-start">
+                    <button
+                      onClick={() => setActiveView('realtime')}
+                      className={`px-3 py-1 rounded transition-colors ${
+                        activeView === 'realtime'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Live transcript
+                    </button>
+                    <button
+                      onClick={() => setActiveView('diarized')}
+                      className={`px-3 py-1 rounded transition-colors ${
+                        activeView === 'diarized'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Speaker analysis
+                    </button>
+                  </div>
+                )}
+                <TranscriptPanel
+                  segments={segments}
+                  speakerNames={speakerNames}
+                  onRenameSpeaker={renameSpeaker}
+                  onUpdateText={updateSegmentText}
+                  onDeleteSegment={deleteSegment}
+                  correctingIds={correctingIds}
+                  viewId={activeView}
+                  autoScroll={recordingState !== 'idle'}
+                />
+              </>
             ) : (liveSummary || summary) ? (
               <>
                 {upgradingFinalSummary && (
@@ -688,6 +722,7 @@ export function App() {
               onAnalyze={runDiarization}
               onModelsReady={checkDiarizationModels}
               elapsedMs={elapsedMs}
+              retranscribeProgress={retranscribeProgress}
             />
             <div className="ml-auto flex items-center gap-2">
               <Button

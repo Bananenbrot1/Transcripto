@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest, Provider, LlmDownloadProgress } from './ipc-types';
+import type { ElectronAPI, DownloadProgress, DiarizationDownloadProgress, FileTranscribeProgress, ShortcutAction, ShortcutConfig, LiveSummarizeRequest, Provider, LlmDownloadProgress, TranscribeRegionRequest } from './ipc-types';
 
 // Typed against ElectronAPI so the compiler verifies method presence and signatures.
 const api: ElectronAPI = {
@@ -75,6 +75,10 @@ const api: ElectronAPI = {
   },
 
   diarize: (numSpeakers: number) => ipcRenderer.invoke('diarize', numSpeakers),
+
+  transcribeRegion: (req: TranscribeRegionRequest) => ipcRenderer.invoke('transcribe-region', req),
+
+  cleanupAfterRetranscription: () => ipcRenderer.invoke('cleanup-after-retranscription'),
 
   storeGet: (key: string) => ipcRenderer.invoke('store-get', key),
   storeSet: (key: string, value: unknown) => ipcRenderer.invoke('store-set', key, value),

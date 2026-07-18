@@ -17,7 +17,7 @@ export function diarizeFromFile(
   segModelPath: string,
   embModelPath: string,
   numSpeakers: number,
-): Promise<DiarizedSegment[]> {
+): Promise<{ segments: DiarizedSegment[]; mixedPath: string }> {
   return new Promise((resolve, reject) => {
     let settled = false;
 
@@ -46,12 +46,12 @@ export function diarizeFromFile(
       stderrOutput += chunk.toString();
     });
 
-    worker.on('message', (msg: { type: string; segments?: DiarizedSegment[]; message?: string }) => {
+    worker.on('message', (msg: { type: string; segments?: DiarizedSegment[]; mixedPath?: string; message?: string }) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (msg.type === 'result') {
-        resolve(msg.segments ?? []);
+        resolve({ segments: msg.segments ?? [], mixedPath: msg.mixedPath ?? '' });
       } else if (msg.type === 'error') {
         reject(new Error(msg.message ?? 'Diarization worker error'));
       }

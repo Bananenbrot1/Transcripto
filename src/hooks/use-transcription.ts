@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useAudioCapture } from './use-audio-capture';
 import { useSessionPersistence, loadSession, clearSession } from './use-session-persistence';
 import { useDiarization } from './use-diarization';
+import { useRetranscription } from './use-retranscription';
 import type { VADOptions } from '@/lib/vad';
 import type {
   AudioSource,
@@ -11,6 +12,8 @@ import type {
 
 export type { DiarizationState } from './use-diarization';
 
+export type TranscriptView = 'realtime' | 'diarized';
+
 interface UseTranscriptionOptions {
   language: string;
   vadOptions?: VADOptions;
@@ -18,7 +21,9 @@ interface UseTranscriptionOptions {
 }
 
 export function useTranscription({ language, vadOptions, correctionEnabled = false }: UseTranscriptionOptions) {
-  const [segments, setSegments] = useState<TranscriptSegment[]>(() => loadSession()?.segments ?? []);
+  const [realtimeSegments, setRealtimeSegments] = useState<TranscriptSegment[]>(() => loadSession()?.segments ?? []);
+  const [diarizedSegments, setDiarizedSegments] = useState<TranscriptSegment[]>([]);
+  const [activeView, setActiveView] = useState<TranscriptView>('realtime');
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [micRMS, setMicRMS] = useState(0);
   const [systemRMS, setSystemRMS] = useState(0);
@@ -35,8 +40,12 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
   const languageRef = useRef(language);
   const recordingStartTimeRef = useRef(0);
   const correctionEnabledRef = useRef(correctionEnabled);
+  const activeViewRef = useRef<TranscriptView>('realtime');
   languageRef.current = language;
   correctionEnabledRef.current = correctionEnabled;
+  activeViewRef.current = activeView;
+
+  const segments = activeView === 'diarized' ? diarizedSegments : realtimeSegments;
 
   const correctSegmentAsync = useCallback((segmentId: string, rawText: string) => {
     setCorrectingIds((prev) => new Set([...prev, segmentId]));
@@ -48,7 +57,7 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
       ),
     ])
       .then((correctedText) => {
-        setSegments((prev) =>
+        setRealtimeSegments((prev) =>
           prev.map((s) => (s.id === segmentId ? { ...s, text: correctedText } : s)),
         );
       })
@@ -86,7 +95,7 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
               startTime: result.segments[0]?.t0 ?? 0,
               endTime: result.segments[result.segments.length - 1]?.t1 ?? 0,
             };
-            setSegments((prev) => [...prev, newSegment]);
+            setRealtimeSegments((prev) => [...prev, newSegment]);
             if (correctionEnabledRef.current) {
               correctSegmentAsync(newSegment.id, result.text);
             }
@@ -133,7 +142,7 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
             }
 
             if (newSegments.length > 0) {
-              setSegments((prev) => [...prev, ...newSegments]);
+              setRealtimeSegments((prev) => [...prev, ...newSegments]);
               if (correctionEnabledRef.current) {
                 for (const seg of newSegments) {
                   correctSegmentAsync(seg.id, seg.text);
@@ -172,10 +181,38 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
     vadOptions,
   );
 
-  const { diarizationState, elapsedMs, checkModels, runDiarization } = useDiarization(
-    recordingStartTimeRef,
-    setSegments,
-  );
+  const { diarizationState, setDiarizationState, elapsedMs, checkModels, runDiarization: runDiarizationCore } = useDiarization();
+  const { retranscribe, progress: retranscribeProgress } = useRetranscription();
+
+  const runDiarization = useCallback(async (numSpeakers: number) => {
+    setDiarizationState('processing');
+    let diar;
+    try {
+      diar = await runDiarizationCore(numSpeakers);
+    } catch (err) {
+      console.error('Diarization failed:', err);
+      setDiarizationState('error');
+      window.electronAPI.cleanupAfterRetranscription();
+      return;
+    }
+
+    try {
+      const rebuilt = await retranscribe(
+        diar.segments,
+        diar.mixedPath,
+        recordingStartTimeRef.current,
+        languageRef.current,
+      );
+      setDiarizedSegments(rebuilt);
+      setActiveView('diarized');
+      setDiarizationState('done');
+    } catch (err) {
+      console.error('Re-transcription failed:', err);
+      setDiarizationState('error');
+    } finally {
+      window.electronAPI.cleanupAfterRetranscription();
+    }
+  }, [runDiarizationCore, retranscribe, setDiarizationState]);
 
   const startRecording = useCallback(async () => {
     clearSession();
@@ -187,7 +224,9 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
     recordingStartTimeRef.current = now;
     segmentCounterRef.current = 0;
     systemSpeakerRef.current = 1;
-    setSegments([]);
+    setRealtimeSegments([]);
+    setDiarizedSegments([]);
+    setActiveView('realtime');
     setSpeakerNames({});
     setCorrectingIds(new Set());
     try {
@@ -228,16 +267,20 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
   }, []);
 
   const updateSegmentText = useCallback((id: string, text: string) => {
-    setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, text } : s)));
+    const setter = activeViewRef.current === 'diarized' ? setDiarizedSegments : setRealtimeSegments;
+    setter((prev) => prev.map((s) => (s.id === id ? { ...s, text } : s)));
   }, []);
 
   const deleteSegment = useCallback((id: string) => {
-    setSegments((prev) => prev.filter((s) => s.id !== id));
+    const setter = activeViewRef.current === 'diarized' ? setDiarizedSegments : setRealtimeSegments;
+    setter((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
   const dismissTranscript = useCallback(() => {
     clearSession();
-    setSegments([]);
+    setRealtimeSegments([]);
+    setDiarizedSegments([]);
+    setActiveView('realtime');
     setSpeakerNames({});
     setRecordingStartTime(0);
     recordingStartTimeRef.current = 0;
@@ -246,19 +289,24 @@ export function useTranscription({ language, vadOptions, correctionEnabled = fal
   }, []);
 
   const restoreTranscript = useCallback((restoredSegments: TranscriptSegment[], restoredSpeakerNames: Record<string, string>) => {
-    setSegments(restoredSegments);
+    setRealtimeSegments(restoredSegments);
     setSpeakerNames(restoredSpeakerNames);
   }, []);
 
   const appendFileSegments = useCallback((newSegments: TranscriptSegment[]) => {
-    setSegments((prev) => [...prev, ...newSegments]);
+    setRealtimeSegments((prev) => [...prev, ...newSegments]);
     segmentCounterRef.current += newSegments.length;
   }, []);
 
-  useSessionPersistence(segments, speakerNames, recordingStartTime);
+  useSessionPersistence(realtimeSegments, speakerNames, recordingStartTime);
 
   return {
     segments,
+    realtimeSegments,
+    diarizedSegments,
+    activeView,
+    setActiveView,
+    retranscribeProgress,
     correctingIds,
     recordingState,
     recordingStartTime,

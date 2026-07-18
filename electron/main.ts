@@ -17,7 +17,7 @@ import * as correctionService from './services/correction-service.js';
 import * as cryptoUtils from './services/crypto-utils.js';
 import * as videoExtractService from './services/video-extract-service.js';
 import * as updateService from './services/update-service.js';
-import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine, Provider } from '../shared/types.js';
+import type { StoreSchema, ShortcutConfig, ShortcutAction, LiveSummarizeRequest, ModelEngine, Provider, TranscribeRegionRequest, TranscribeRegionResult } from '../shared/types.js';
 
 const __dirname = import.meta.dirname;
 
@@ -321,18 +321,66 @@ function registerIpcHandlers(): void {
     }, 1000);
     try {
       const { micPath, sysPath } = audioFileService.getPaths();
-      const raw = await diarizationService.diarizeFromFile(
+      // Register the mixed file up front so it is cleaned up even if diarization
+      // fails after the worker has written it to disk.
+      audioFileService.setMixedPath(path.join(path.dirname(micPath), 'mixed-session.f32'));
+      const { segments, mixedPath } = await diarizationService.diarizeFromFile(
         micPath,
         sysPath,
         diarizationModelManager.getSegmentationModelPath(),
         diarizationModelManager.getEmbeddingModelPath(),
         numSpeakers,
       );
-      return raw.map((seg) => ({ ...seg }));
+      // Preserve the mixed file for re-transcription; cleanup happens explicitly
+      // via 'cleanup-after-retranscription' once the renderer finishes rebuilding.
+      audioFileService.setMixedPath(mixedPath);
+      return { segments: segments.map((seg) => ({ ...seg })), mixedPath };
     } finally {
       clearInterval(interval);
-      audioFileService.cleanup();
     }
+  });
+
+  ipcMain.handle('transcribe-region', async (_event, req: TranscribeRegionRequest): Promise<TranscribeRegionResult> => {
+    const { sourcePath, start, end, language, prompt, startByte, endByte } = req;
+    const SAMPLE_RATE = 16000;
+
+    let fileBytes = 0;
+    try {
+      fileBytes = fs.statSync(sourcePath).size;
+    } catch {
+      return { text: '', startTime: start, endTime: end };
+    }
+
+    const rawStart = startByte ?? Math.floor(start * SAMPLE_RATE) * 4;
+    const rawEnd = endByte ?? Math.floor(end * SAMPLE_RATE) * 4;
+    const byteStart = Math.max(0, Math.min(rawStart, fileBytes));
+    const byteEnd = Math.max(byteStart, Math.min(rawEnd, fileBytes));
+    const byteLen = (byteEnd - byteStart) - ((byteEnd - byteStart) % 4);
+
+    if (byteLen < 4) {
+      return { text: '', startTime: start, endTime: end };
+    }
+
+    const buf = Buffer.allocUnsafe(byteLen);
+    const fd = fs.openSync(sourcePath, 'r');
+    try {
+      fs.readSync(fd, buf, 0, byteLen, byteStart);
+    } finally {
+      fs.closeSync(fd);
+    }
+    const sliceBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + byteLen);
+
+    const service = activeEngine === 'parakeet' ? parakeetService : whisperService;
+    const result = await service.transcribeBuffer(sliceBuffer, language, { prompt });
+    return {
+      text: result.text,
+      startTime: result.segments[0]?.t0 ?? 0,
+      endTime: result.segments[result.segments.length - 1]?.t1 ?? (end - start),
+    };
+  });
+
+  ipcMain.handle('cleanup-after-retranscription', () => {
+    audioFileService.cleanup();
   });
 
   ipcMain.handle('check-for-updates', () => {

@@ -20,6 +20,12 @@ const QUEUE_FULL_WAIT_MS = 120_000;
 
 let micContext: WhisperContext | null = null;
 let sysContext: WhisperContext | null = null;
+// Dedicated context for offline re-transcription of diarization slices.
+// Initialized lazily on first transcribeBuffer call to avoid the memory cost
+// until it is actually needed.
+let reContext: WhisperContext | null = null;
+let reHead: Promise<void> = Promise.resolve();
+let currentModelPath = '';
 
 // Each slot is a promise that resolves only when the underlying NATIVE whisper
 // operation finishes (not just when our timeout fires).  This prevents calling
@@ -36,6 +42,7 @@ export async function initialize(modelPath: string): Promise<void> {
     await release();
   }
 
+  currentModelPath = modelPath;
   [micContext, sysContext] = await Promise.all([
     whisperNode.initWhisper({ filePath: modelPath, useGpu: true }),
     whisperNode.initWhisper({ filePath: modelPath, useGpu: true }),
@@ -268,12 +275,99 @@ export async function transcribeFile(
   }
 }
 
+const RE_TRANSCRIBE_TIMEOUT_MS = 120_000;
+
+export interface TranscribeBufferOptions {
+  prompt?: string;
+}
+
+/**
+ * Offline re-transcription of a single audio slice using a dedicated third
+ * context (`reContext`), initialized lazily on first use. Uses beam search and
+ * temperature fallback for higher quality than the real-time greedy path.
+ */
+export async function transcribeBuffer(
+  audioBuffer: ArrayBuffer,
+  language: string,
+  options: TranscribeBufferOptions = {},
+): Promise<TranscribeResult> {
+  if (!currentModelPath) {
+    throw new Error('Whisper not initialized');
+  }
+
+  // Serialize calls: the native transcribeData mutexes per context, so back-to-back
+  // requests must wait for the previous native op to finish.
+  const prevHead = reHead;
+  let releaseGate!: () => void;
+  reHead = new Promise<void>((resolve) => { releaseGate = resolve; });
+  await prevHead;
+
+  try {
+    if (!reContext) {
+      log('[whisper] initializing reContext lazily');
+      reContext = await whisperNode.initWhisper({ filePath: currentModelPath, useGpu: true });
+    }
+
+    const float32 = new Float32Array(audioBuffer);
+    if (float32.length === 0) {
+      return { text: '', segments: [] };
+    }
+    const int16 = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      const s = Math.max(-1, Math.min(1, float32[i]));
+      int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+
+    const collectedSegments: Array<{ text: string; t0: number; t1: number }> = [];
+
+    const { promise: nativePromise } = reContext.transcribeData(int16.buffer, {
+      language: language || 'auto',
+      maxLen: 0,
+      beamSize: 5,
+      temperatureInc: 0.2,
+      tdrzEnable: false,
+      prompt: options.prompt,
+      onNewSegments: (event: NewSegmentsEvent) => {
+        for (const seg of event.segments) {
+          collectedSegments.push({ text: seg.text ?? '', t0: seg.t0 ?? 0, t1: seg.t1 ?? 0 });
+        }
+      },
+    });
+
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`[whisper] transcribeBuffer timed out after ${RE_TRANSCRIBE_TIMEOUT_MS}ms`)), RE_TRANSCRIBE_TIMEOUT_MS),
+    );
+
+    try {
+      await Promise.race([nativePromise, timeout]);
+    } catch (err) {
+      if (collectedSegments.length === 0) throw err;
+    }
+
+    const processed = collectedSegments.map((seg) => ({
+      text: seg.text.trim(),
+      t0: seg.t0,
+      t1: seg.t1,
+      speakerTurn: false,
+    }));
+
+    return {
+      text: processed.map((s) => s.text).join(' ').trim(),
+      segments: processed,
+    };
+  } finally {
+    releaseGate();
+  }
+}
+
 export async function release(): Promise<void> {
   log('[whisper] release called');
   micHead = Promise.resolve();
   sysHead = Promise.resolve();
+  reHead = Promise.resolve();
   micQueueDepth = 0;
   sysQueueDepth = 0;
+  currentModelPath = '';
   const promises: Promise<void>[] = [];
   if (micContext) {
     promises.push(micContext.release());
@@ -282,6 +376,10 @@ export async function release(): Promise<void> {
   if (sysContext) {
     promises.push(sysContext.release());
     sysContext = null;
+  }
+  if (reContext) {
+    promises.push(reContext.release());
+    reContext = null;
   }
   await Promise.all(promises);
   log('[whisper] release done');

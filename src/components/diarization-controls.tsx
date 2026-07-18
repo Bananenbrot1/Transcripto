@@ -10,6 +10,7 @@ interface DiarizationControlsProps {
   onAnalyze: (numSpeakers: number) => void;
   onModelsReady: () => void;
   elapsedMs?: number;
+  retranscribeProgress?: { current: number; total: number; elapsedMs: number } | null;
 }
 
 function formatElapsed(ms: number): string {
@@ -33,6 +34,7 @@ export function DiarizationControls({
   onAnalyze,
   onModelsReady,
   elapsedMs = 0,
+  retranscribeProgress = null,
 }: DiarizationControlsProps) {
   const [numSpeakersInput, setNumSpeakersInput] = useState('');
   const [downloading, setDownloading] = useState(false);
@@ -153,6 +155,15 @@ export function DiarizationControls({
   }
 
   if (diarizationState === 'processing') {
+    if (retranscribeProgress) {
+      const elapsed = retranscribeProgress.elapsedMs > 0 ? ` — ${formatElapsed(retranscribeProgress.elapsedMs)}` : '';
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" />
+          {`Re-transcribing segments… (${retranscribeProgress.current}/${retranscribeProgress.total})${elapsed}`}
+        </div>
+      );
+    }
     const elapsed = elapsedMs > 0 ? ` (${formatElapsed(elapsedMs)})` : '';
     return (
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -10,6 +10,7 @@ function getSessionDir(): string {
 
 let micPath = '';
 let sysPath = '';
+let mixedPath = '';
 let micStream: fs.WriteStream | null = null;
 let sysStream: fs.WriteStream | null = null;
 
@@ -20,7 +21,7 @@ export function cleanup(): void {
   micStream = null;
   sysStream = null;
 
-  for (const p of [micPath, sysPath]) {
+  for (const p of [micPath, sysPath, mixedPath]) {
     if (p && fs.existsSync(p)) {
       try {
         fs.unlinkSync(p);
@@ -31,6 +32,12 @@ export function cleanup(): void {
   }
   micPath = '';
   sysPath = '';
+  mixedPath = '';
+}
+
+/** Register the mixed audio file produced by diarization so it is cleaned up later. */
+export function setMixedPath(p: string): void {
+  mixedPath = p;
 }
 
 export function openRecording(): void {

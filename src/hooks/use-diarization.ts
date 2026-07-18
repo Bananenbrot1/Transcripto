@@ -1,13 +1,9 @@
 import { useState, useCallback } from 'react';
-import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
-import type { TranscriptSegment } from '@/types/transcription';
+import type { DiarizationSegment } from '@/types/transcription';
 
 export type DiarizationState = 'idle' | 'models-missing' | 'available' | 'processing' | 'done' | 'error';
 
-export function useDiarization(
-  recordingStartTimeRef: MutableRefObject<number>,
-  setSegments: Dispatch<SetStateAction<TranscriptSegment[]>>,
-) {
+export function useDiarization() {
   const [diarizationState, setDiarizationState] = useState<DiarizationState>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
 
@@ -22,35 +18,21 @@ export function useDiarization(
     }
   }, []);
 
-  const runDiarization = useCallback(async (numSpeakers: number) => {
-    setDiarizationState('processing');
-    setElapsedMs(0);
-
-    const unsubscribeProgress = window.electronAPI.onDiarizationProgress(({ elapsedMs: ms }) => {
-      setElapsedMs(ms);
-    });
-
-    try {
-      const diarSegments = await window.electronAPI.diarize(numSpeakers);
-
-      const recStart = recordingStartTimeRef.current;
-      setSegments((prev) =>
-        prev.map((seg) => {
-          const relSec = (seg.speechStartMs - recStart) / 1000;
-          const match = diarSegments.find((d) => relSec >= d.start && relSec <= d.end);
-          if (!match) return seg;
-          return { ...seg, speaker: match.speaker, speakerId: match.speaker };
-        }),
-      );
-
-      setDiarizationState('done');
-    } catch (err) {
-      console.error('Diarization failed:', err);
-      setDiarizationState('error');
-    } finally {
-      unsubscribeProgress();
-    }
-  }, [recordingStartTimeRef, setSegments]);
+  /** Run diarization only. Returns the raw segments and the mixed audio path. */
+  const runDiarization = useCallback(
+    async (numSpeakers: number): Promise<{ segments: DiarizationSegment[]; mixedPath: string }> => {
+      setElapsedMs(0);
+      const unsubscribeProgress = window.electronAPI.onDiarizationProgress(({ elapsedMs: ms }) => {
+        setElapsedMs(ms);
+      });
+      try {
+        return await window.electronAPI.diarize(numSpeakers);
+      } finally {
+        unsubscribeProgress();
+      }
+    },
+    [],
+  );
 
   return {
     diarizationState,

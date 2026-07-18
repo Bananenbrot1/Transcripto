@@ -24,6 +24,29 @@ export interface DiarizationSegment {
   speaker: string;   // e.g. "Speaker A"
   start: number;     // seconds from recording start
   end: number;       // seconds from recording start
+  startByte?: number; // byte offset into the mixed F32 file (16kHz mono)
+  endByte?: number;
+}
+
+export interface DiarizeResult {
+  segments: DiarizationSegment[];
+  mixedPath: string;
+}
+
+export interface TranscribeRegionRequest {
+  sourcePath: string;
+  start: number;   // seconds
+  end: number;     // seconds
+  language: string;
+  prompt?: string;
+  startByte?: number;
+  endByte?: number;
+}
+
+export interface TranscribeRegionResult {
+  text: string;
+  startTime: number; // seconds, relative to the slice
+  endTime: number;   // seconds, relative to the slice
 }
 
 export type ModelEngine = 'whisper' | 'parakeet';

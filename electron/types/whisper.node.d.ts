@@ -20,6 +20,18 @@ declare module '@fugood/whisper.node' {
         maxLen?: number;
         temperature?: number;
         tdrzEnable?: boolean;
+        beamSize?: number;
+        bestOf?: number;
+        temperatureInc?: number;
+        offset?: number;
+        duration?: number;
+        prompt?: string;
+        nProcessors?: number;
+        tokenTimestamps?: boolean;
+        wordThold?: number;
+        maxThreads?: number;
+        maxContext?: number;
+        translate?: boolean;
         onNewSegments?: (event: NewSegmentsEvent) => void;
       },
     ): { promise: Promise<void> };

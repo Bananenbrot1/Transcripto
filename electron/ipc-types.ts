@@ -10,6 +10,9 @@ import type {
   DownloadProgress,
   TranscribeResult,
   DiarizationSegment,
+  DiarizeResult,
+  TranscribeRegionRequest,
+  TranscribeRegionResult,
   DiarizationDownloadProgress,
   MediaPermissions,
   StoreSchema,
@@ -29,6 +32,9 @@ export type {
   DownloadProgress,
   TranscribeResult,
   DiarizationSegment,
+  DiarizeResult,
+  TranscribeRegionRequest,
+  TranscribeRegionResult,
   DiarizationDownloadProgress,
   MediaPermissions,
   StoreSchema,
@@ -71,7 +77,9 @@ export interface ElectronAPI {
   closeAudioRecording: () => Promise<void>;
   cleanupAudioRecording: () => Promise<void>;
   onDiarizationProgress: (cb: (p: { elapsedMs: number }) => void) => () => void;
-  diarize: (numSpeakers: number) => Promise<DiarizationSegment[]>;
+  diarize: (numSpeakers: number) => Promise<DiarizeResult>;
+  transcribeRegion: (req: TranscribeRegionRequest) => Promise<TranscribeRegionResult>;
+  cleanupAfterRetranscription: () => Promise<void>;
   storeGet: <K extends keyof StoreSchema>(key: K) => Promise<StoreSchema[K]>;
   storeSet: <K extends keyof StoreSchema>(key: K, value: StoreSchema[K]) => Promise<void>;
   storeGetAll: () => Promise<StoreSchema>;

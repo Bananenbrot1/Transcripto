@@ -185,6 +185,71 @@ export async function transcribe(
     });
 }
 
+export interface TranscribeBufferOptions {
+  prompt?: string;
+}
+
+/**
+ * Offline re-transcription of a single audio slice. Runs post-recording when the
+ * workers are otherwise idle, so it reuses the mic worker. `options` is accepted
+ * for interface parity with the Whisper engine but Parakeet has no prompt input.
+ */
+export function transcribeBuffer(
+  audioBuffer: ArrayBuffer,
+  _language: string,
+  _options: TranscribeBufferOptions = {},
+): Promise<TranscribeResult> {
+  const worker = micWorker ?? sysWorker;
+  if (!worker) {
+    return Promise.reject(new Error('Parakeet not initialized'));
+  }
+
+  const float32 = new Float32Array(audioBuffer);
+  if (float32.length === 0) {
+    return Promise.resolve({ text: '', segments: [] });
+  }
+  const requestId = nextRequestId++;
+
+  return new Promise<TranscribeResult>((resolve, reject) => {
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        worker.removeListener('message', onMessage);
+        reject(new Error(`[parakeet] transcribeBuffer timed out after ${TRANSCRIBE_TIMEOUT_MS}ms`));
+      }
+    }, TRANSCRIBE_TIMEOUT_MS);
+
+    const onMessage = (msg: ParakeetTranscribeResponse | ParakeetErrorResponse | ParakeetReadyMessage) => {
+      if ('id' in msg && msg.id !== requestId) return;
+      if (msg.type !== 'result' && msg.type !== 'error') return;
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      worker.removeListener('message', onMessage);
+
+      if (msg.type === 'error') {
+        reject(new Error((msg as ParakeetErrorResponse).message));
+      } else {
+        const text = (msg as ParakeetTranscribeResponse).text.trim();
+        resolve({
+          text,
+          segments: text ? [{ text, t0: 0, t1: 0, speakerTurn: false }] : [],
+        });
+      }
+    };
+
+    worker.on('message', onMessage);
+    worker.postMessage({
+      type: 'transcribe',
+      id: requestId,
+      samples: float32,
+      sampleRate: 16000,
+    } as ParakeetTranscribeRequest);
+  });
+}
+
 export function isMicContextBusy(): boolean {
   return micQueueDepth > 0;
 }

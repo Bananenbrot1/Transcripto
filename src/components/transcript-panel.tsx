@@ -9,6 +9,10 @@ interface TranscriptPanelProps {
   onUpdateText?: (id: string, text: string) => void;
   onDeleteSegment?: (id: string) => void;
   correctingIds?: Set<string>;
+  /** Identifies the current view so scroll position is preserved per view. */
+  viewId?: string;
+  /** Auto-scroll to the newest segment (used during live recording). */
+  autoScroll?: boolean;
 }
 
 function formatTime(timestamp: number): string {
@@ -216,15 +220,33 @@ export function TranscriptPanel({
   onUpdateText,
   onDeleteSegment,
   correctingIds,
+  viewId = 'default',
+  autoScroll = true,
 }: TranscriptPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollPositions = useRef<Record<string, number>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!editingId) {
+    if (autoScroll && !editingId) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [segments.length, editingId]);
+  }, [segments.length, editingId, autoScroll]);
+
+  // Restore the saved scroll position when switching between views.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const saved = scrollPositions.current[viewId];
+    if (saved != null) el.scrollTop = saved;
+  }, [viewId]);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      scrollPositions.current[viewId] = scrollRef.current.scrollTop;
+    }
+  };
 
   if (segments.length === 0) {
     return (
@@ -235,7 +257,7 @@ export function TranscriptPanel({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto space-y-3 pr-1">
       {segments.map((segment) => (
         <div
           key={segment.id}
